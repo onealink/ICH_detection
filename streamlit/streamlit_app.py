@@ -372,7 +372,7 @@ with st.sidebar:
     ws_url_override = base_url.replace("http://", "ws://").replace("https://", "wss://")
     st.divider()
     st.header("🧠 模型与参数")
-    model_options = {"Cry": "刺激隐核虫病", "Ich": "多子小瓜虫病", "Tomont": "包囊"}
+    model_options = {"Ich": "多子小瓜虫病", "Tomont": "包囊"}
     model_value = st.selectbox("模型类型", options=list(model_options.keys()),
                                format_func=lambda x: f"{x}（{model_options[x]}）")
     # conf = st.slider("置信度阈值", 0.05, 1.0, 0.6, 0.05)
@@ -627,6 +627,7 @@ with tab_fuzzy:
     if st.button("🧪 预测", type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(f"风险值: {r['risk_value']}，状态: {r['risk_status']}")
+
 
 
 
