@@ -171,7 +171,13 @@ DEFAULT_CONF = 0.6  # 默认置信度
 
 @st.cache_resource
 def load_models():
-    return {k: YOLO(p) for k, p in MODEL_PATHS.items()}
+    models = {}
+    for k, p in MODEL_PATHS.items():
+        if not Path(p).exists():
+            st.error(f"模型文件不存在：{p}（{k}模型）")  # 新增：验证文件存在
+        models[k] = YOLO(p)
+        st.success(f"成功加载模型：{k} -> {p}")  # 新增：打印加载日志
+    return models
 
 MODELS = load_models()
 
@@ -772,6 +778,7 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
 
 
 
