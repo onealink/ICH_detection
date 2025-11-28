@@ -1,25 +1,26 @@
 # Streamlit
 streamlit==1.36.0
 
-# 科学计算核心依赖
+# 核心数据处理
 numpy==1.26.4
 pandas==2.2.3
 Pillow==10.4.0
+
+# 文件操作
 XlsxWriter==3.2.0
 requests==2.32.3
 websocket-client==1.8.0
-scikit-fuzzy==0.4.2
 
-# OpenCV 无 GUI 版本
+# 图像处理
 opencv-python-headless==4.8.1.78
 
-# PyTorch - 使用兼容的版本组合
-torch==2.2.2
-torchvision==0.17.2
-torchaudio==2.2.2
+# 机器学习
+scikit-fuzzy==0.4.2
 
-# YOLOv8
+# YOLOv8 - 这个会自动安装兼容的PyTorch版本
 ultralytics==8.3.74
 
-# 其他工具
-rich>=13.3.0
+# 移除以下有问题的依赖：
+# torch==2.5.1
+# torchvision==0.20.1
+# torchaudio==2.5.1
