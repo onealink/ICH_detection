@@ -1,5 +1,5 @@
 import streamlit as st
-st.set_page_config(page_title="YOLO病害检测", page_icon="🧪", layout="wide")
+from streamlit_extras.switch_page_button import switch_page
 import base64
 import io
 import json
@@ -22,7 +22,137 @@ import skfuzzy as fuzz
 from skfuzzy import control as ctrl
 import time
 
+# ====================== 语言配置 ======================
+# 初始化语言状态
+if 'language' not in st.session_state:
+    st.session_state.language = 'zh'  # 默认中文
 
+# 翻译字典
+translations = {
+    'zh': {
+        'page_title': 'YOLO病害检测',
+        'header_title': '鱼类寄生虫病检测',
+        'header_subtitle': '图片 / 批量 / 视频 / 摄像头 / 模糊预测 — 一站式检测台',
+        'sidebar_university': '宁波大学 · 病害实验室',
+        'sidebar_model': '🧠 模型与参数',
+        'sidebar_model_type': '模型类型',
+        'sidebar_current_model': '当前模型:',
+        'tab_image': '🖼️ 图片检测',
+        'tab_batch': '🗂️ 批量图片',
+        'tab_video': '🎞️ 视频检测',
+        'tab_camera': '📷 摄像头检测',
+        'tab_fuzzy': '🧮 模糊预测',
+        'image_original': '原图',
+        'image_detection': '检测与结果',
+        'image_upload': '上传图片',
+        'image_run': '🚀 开始检测',
+        'image_result': '检测结果',
+        'image_download_excel': '下载 Excel（检测表）',
+        'image_download_img': '下载 标注图片',
+        'batch_upload': '选择多张图片',
+        'batch_run': '🚀 开始批量检测',
+        'batch_processing': '推理中：',
+        'batch_total': '总数：',
+        'batch_no_results': '未检测到目标。',
+        'batch_download_excel': '📥 下载 Excel（批量检测表）',
+        'batch_download_zip': '🗜️ 打包下载 标注图片ZIP',
+        'video_upload': '上传视频',
+        'video_run': '🚀 开始视频检测',
+        'video_disabled': '当前云端环境未能加载 OpenCV（cv2），视频处理功能已禁用。请在本地运行或安装支持的 OpenCV 版本。',
+        'video_processing': '本地视频处理...（按 CPU 速度可能较慢）',
+        'video_download': '下载处理后视频',
+        'camera_title': '📷 摄像头检测（拍照版）',
+        'camera_caption': '点击“打开摄像头”后才渲染拍照控件；点击“关闭摄像头”停止并隐藏。',
+        'camera_open': '🎬 打开摄像头',
+        'camera_close': '⏹ 关闭摄像头',
+        'camera_not_started': '摄像头未开启。点击“打开摄像头”开始拍照。',
+        'camera_shot': '点击下方按钮拍一张',
+        'camera_detect': '检测此照片',
+        'fuzzy_title': '🧮 模糊预测',
+        'fuzzy_input': '输入指标参数',
+        'fuzzy_day': '日间行为（1~3）',
+        'fuzzy_night': '夜间行为（1~3）',
+        'fuzzy_surface': '体表特征（1~3）',
+        'fuzzy_pathogen': '病原特征（1~3）',
+        'fuzzy_predict': '🧪 预测',
+        'fuzzy_result': '风险值: {risk_value}，状态: {risk_status}',
+        'Ich': '多子小瓜虫病',
+        'Tomont': '包囊',
+        'healthy': '健康',
+        'subhealthy': '亚健康',
+        'diseased': '患病',
+        'category': '类别',
+        'confidence': '置信度',
+        'location': '位置',
+        'path': '路径'
+    },
+    'en': {
+        'page_title': 'YOLO Disease Detection',
+        'header_title': 'Fish Parasitic Disease Detection',
+        'header_subtitle': 'Image / Batch / Video / Camera / Fuzzy Prediction — One-stop Detection Platform',
+        'sidebar_university': 'Ningbo University · Disease Laboratory',
+        'sidebar_model': '🧠 Model & Parameters',
+        'sidebar_model_type': 'Model Type',
+        'sidebar_current_model': 'Current Model:',
+        'tab_image': '🖼️ Image Detection',
+        'tab_batch': '🗂️ Batch Images',
+        'tab_video': '🎞️ Video Detection',
+        'tab_camera': '📷 Camera Detection',
+        'tab_fuzzy': '🧮 Fuzzy Prediction',
+        'image_original': 'Original Image',
+        'image_detection': 'Detection & Results',
+        'image_upload': 'Upload Image',
+        'image_run': '🚀 Start Detection',
+        'image_result': 'Detection Result',
+        'image_download_excel': 'Download Excel (Detection Table)',
+        'image_download_img': 'Download Annotated Image',
+        'batch_upload': 'Select Multiple Images',
+        'batch_run': '🚀 Start Batch Detection',
+        'batch_processing': 'Processing: ',
+        'batch_total': 'Total: ',
+        'batch_no_results': 'No targets detected.',
+        'batch_download_excel': '📥 Download Excel (Batch Detection)',
+        'batch_download_zip': '🗜️ Download Annotated Images (ZIP)',
+        'video_upload': 'Upload Video',
+        'video_run': '🚀 Start Video Detection',
+        'video_disabled': 'OpenCV (cv2) not loaded in current cloud environment. Video processing disabled. Please run locally or install supported OpenCV version.',
+        'video_processing': 'Local video processing... (May be slow depending on CPU)',
+        'video_download': 'Download Processed Video',
+        'camera_title': '📷 Camera Detection (Photo Mode)',
+        'camera_caption': 'Camera widget loads only after clicking "Open Camera"; click "Close Camera" to stop and hide.',
+        'camera_open': '🎬 Open Camera',
+        'camera_close': '⏹ Close Camera',
+        'camera_not_started': 'Camera not started. Click "Open Camera" to begin.',
+        'camera_shot': 'Click button below to take photo',
+        'camera_detect': 'Detect This Photo',
+        'fuzzy_title': '🧮 Fuzzy Prediction',
+        'fuzzy_input': 'Input Indicator Parameters',
+        'fuzzy_day': 'Day Behavior (1~3)',
+        'fuzzy_night': 'Night Behavior (1~3)',
+        'fuzzy_surface': 'Surface Features (1~3)',
+        'fuzzy_pathogen': 'Pathogen Features (1~3)',
+        'fuzzy_predict': '🧪 Predict',
+        'fuzzy_result': 'Risk Value: {risk_value}, Status: {risk_status}',
+        'Ich': 'Ichthyophthirius Disease',
+        'Tomont': 'Tomont',
+        'healthy': 'Healthy',
+        'subhealthy': 'Subhealthy',
+        'diseased': 'Diseased',
+        'category': 'Category',
+        'confidence': 'Confidence',
+        'location': 'Location',
+        'path': 'Path'
+    }
+}
+
+# 获取当前语言翻译
+def t(key):
+    return translations[st.session_state.language].get(key, key)
+
+# ====================== 页面配置 ======================
+st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
+
+# ====================== 原有代码（修改文本为翻译调用） ======================
 
 # 以当前文件所在目录为基准
 BASE_DIR = Path(__file__).parent
@@ -30,7 +160,6 @@ WEIGHTS = BASE_DIR / "best.pt"
 IMG_DIR = BASE_DIR / "img"
 MODEL_PATHS = {"Lyc": str(WEIGHTS), "Ich": str(WEIGHTS), "Tomont": str(WEIGHTS)}
 DEFAULT_CONF = 0.6  # 默认置信度
-
 
 # 你的模型清单（可扩展多个）
 # ========= 本地模型与工具 =========
@@ -62,9 +191,9 @@ def detections_to_df(res) -> pd.DataFrame:
             xyxy_np = boxes.xyxy.detach().cpu().numpy()
             for i in range(len(cls_np)):
                 rows.append({
-                    "category": names.get(int(cls_np[i]), str(int(cls_np[i]))),
-                    "conf": float(conf_np[i]),
-                    "location": [float(x) for x in xyxy_np[i].tolist()],
+                    t("category"): names.get(int(cls_np[i]), str(int(cls_np[i]))),
+                    t("confidence"): float(conf_np[i]),
+                    t("location"): [float(x) for x in xyxy_np[i].tolist()],
                 })
         return pd.DataFrame(rows)
 
@@ -73,10 +202,10 @@ def detections_to_df(res) -> pd.DataFrame:
         rows = []
         for d in res or []:
             rows.append({
-                "category": d.get("category") or d.get("class_name") or d.get("name") or d.get("cls"),
-                "conf": d.get("conf") or d.get("confidence"),
-                "location": d.get("location") or d.get("bbox") or d.get("xyxy"),
-                "path": d.get("path"),
+                t("category"): d.get("category") or d.get("class_name") or d.get("name") or d.get("cls"),
+                t("confidence"): d.get("conf") or d.get("confidence"),
+                t("location"): d.get("location") or d.get("bbox") or d.get("xyxy"),
+                t("path"): d.get("path"),
             })
         return pd.DataFrame(rows)
 
@@ -85,8 +214,6 @@ def detections_to_df(res) -> pd.DataFrame:
         return res
 
     return pd.DataFrame()
-
-
 
 def predict_on_image(img_input, model_key: str, conf: float | None = None):
     # 统一转 PIL
@@ -123,15 +250,13 @@ def predict_on_image(img_input, model_key: str, conf: float | None = None):
     df = detections_to_df(r)
     return vis_pil, df
 
-
-
 def process_video(video_bytes: bytes, model_key: str, conf: float | None = None, max_frames: int | None = None) -> Path:
     if not CV2_OK:
-        raise RuntimeError("当前环境未能加载 OpenCV（cv2），无法进行视频处理。请在本地或支持 OpenCV 的环境运行该功能。")
+        raise RuntimeError(t("video_disabled"))
     """逐帧推理并输出 mp4，返回输出视频路径"""
     in_path = Path("input_tmp.mp4"); in_path.write_bytes(video_bytes)
     cap = cv2.VideoCapture(str(in_path))
-    if not cap.isOpened(): raise RuntimeError("无法读取视频")
+    if not cap.isOpened(): raise RuntimeError("无法读取视频" if st.session_state.language == 'zh' else "Cannot read video")
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 25
     w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -155,7 +280,7 @@ def process_video(video_bytes: bytes, model_key: str, conf: float | None = None,
 def save_table_to_excel(df: pd.DataFrame, filename: str) -> Path:
     out = Path(filename).with_suffix(".xlsx")
     with pd.ExcelWriter(out, engine="xlsxwriter") as w:
-        df.to_excel(w, sheet_name="detections", index=False)
+        df.to_excel(w, sheet_name="detections" if st.session_state.language == 'zh' else "Detections", index=False)
     return out
 
 def zip_files(files: list[Path], out_zip: Path) -> Path:
@@ -226,12 +351,13 @@ def fuzzy_predict(day_val: float, night_val: float, surf_val: float, patho_val: 
     sim.input['patho'] = patho_val
     sim.compute()
     v = float(sim.output['risk'])
-    status = "健康" if v < 1.5 else ("亚健康" if v < 2.5 else "患病")
+    if st.session_state.language == 'zh':
+        status = "健康" if v < 1.5 else ("亚健康" if v < 2.5 else "患病")
+    else:
+        status = t("healthy") if v < 1.5 else (t("subhealthy") if v < 2.5 else t("diseased"))
     return {"risk_value": round(v, 1), "risk_status": status}
 
-
 # ========================= 全局设置 & 主题扩展 =========================
-
 
 # 统一的 CSS：导航条 / 卡片 / 标签 / 表格 / 按钮
 st.markdown("""
@@ -271,6 +397,14 @@ st.markdown("""
   background: #EEF2FF; color:#3730A3; border:1px solid #E0E7FF;
   padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight:600;
 }
+
+/* 语言切换按钮样式 */
+.lang-switch {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 999;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -292,11 +426,23 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# 语言切换按钮
+with st.sidebar:
+    lang_col1, lang_col2 = st.columns(2)
+    with lang_col1:
+        if st.button('中文', use_container_width=True):
+            st.session_state.language = 'zh'
+            st.rerun()
+    with lang_col2:
+        if st.button('English', use_container_width=True):
+            st.session_state.language = 'en'
+            st.rerun()
+
 # 顶部导航条
-st.markdown("""
+st.markdown(f"""
 <style>
 /* ===== 顶部横幅整体样式 ===== */
-.app-header {
+.app-header {{
   background: linear-gradient(90deg, #4F46E5 0%, #7C3AED 100%);
   color: white;
   border-radius: 14px;     /* 圆角稍微小一些 */
@@ -307,52 +453,50 @@ st.markdown("""
   flex-direction: column;
   align-items: center;
   justify-content: center;
-}
+}}
 
 
 /* ===== 图标与标题一行 ===== */
-.app-title-row {
+.app-title-row {{
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 12px;  /* 图标与标题间距 */
   margin-bottom: 8px;
-}
+}}
 
-.app-icon {
+.app-icon {{
   font-size: 42px;
-}
+}}
 
-.app-title {
+.app-title {{
   font-size: 36px;
   font-weight: 800;
   letter-spacing: 1px;
-}
+}}
 
-.app-subtitle {
+.app-subtitle {{
   font-size: 20px;
   opacity: 0.95;
-}
+}}
 </style>
 
 <div class="app-header">
   <div class="app-title-row">
     <div class="app-icon">🧪</div>
-    <div class="app-title">鱼类寄生虫病检测</div>
+    <div class="app-title">{t('header_title')}</div>
   </div>
-  <div class="app-subtitle">图片 / 批量 / 视频 / 摄像头 / 模糊预测 — 一站式检测台</div>
+  <div class="app-subtitle">{t('header_subtitle')}</div>
 </div>
 """, unsafe_allow_html=True)
-
-
 
 # ------------------------- 侧边栏 -------------------------
 with st.sidebar:
     # ======= 这里放你的校徽 / 项目简介（会显示）=======
     # 把 school_logo.png 放到同级目录后取消下一行注释即可：
     # st.image("school_logo.png", use_container_width=True)
-    st.markdown("""
-    ### 🎓 宁波大学 · 病害实验室
+    st.markdown(f"""
+    ### 🎓 {t('sidebar_university')}
     """)
     # st.image("img/img1.png", width='stretch')
     # st.image(str(IMG_DIR / "img1.png"), use_column_width=True)
@@ -371,12 +515,12 @@ with st.sidebar:
     base_url = "http://localhost:8080"
     ws_url_override = base_url.replace("http://", "ws://").replace("https://", "wss://")
     st.divider()
-    st.header("🧠 模型与参数")
-    model_options = {"Ich": "多子小瓜虫病", "Tomont": "包囊"}
-    model_value = st.selectbox("模型类型", options=list(model_options.keys()),
+    st.header(t('sidebar_model'))
+    model_options = {"Ich": t('Ich'), "Tomont": t('Tomont')}
+    model_value = st.selectbox(t('sidebar_model_type'), options=list(model_options.keys()),
                                format_func=lambda x: f"{x}（{model_options[x]}）")
     # conf = st.slider("置信度阈值", 0.05, 1.0, 0.6, 0.05)
-    st.markdown(f"<span class='badge'>当前模型: <b>{model_value}</b></span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='badge'>{t('sidebar_current_model')} <b>{model_value}</b></span>", unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)  # ← 结束隐藏容器
 
@@ -393,7 +537,7 @@ def b64_to_pil(maybe_b64):
     import io, base64
     from PIL import Image
     if maybe_b64 is None:
-        raise ValueError("empty image input")
+        raise ValueError("empty image input" if st.session_state.language == 'en' else "空图片输入")
     if isinstance(maybe_b64, str) and maybe_b64.strip().lower().startswith(("http://", "https://")):
         return None
     if isinstance(maybe_b64, (bytes, bytearray)):
@@ -409,7 +553,7 @@ def b64_to_pil(maybe_b64):
             s += "=" * (4 - missing)
         raw = base64.b64decode(s, validate=False)
         return Image.open(io.BytesIO(raw)).convert("RGB")
-    raise TypeError(f"unsupported type for image: {type(maybe_b64)}")
+    raise TypeError(f"unsupported type for image: {type(maybe_b64)}" if st.session_state.language == 'en' else f"不支持的图片类型: {type(maybe_b64)}")
 
 def ensure_ok(resp: requests.Response):
     if not resp.ok:
@@ -422,7 +566,7 @@ def ensure_ok(resp: requests.Response):
 def save_table_to_excel(df: pd.DataFrame, filename: str) -> Path:
     out = Path(filename).with_suffix(".xlsx")
     with pd.ExcelWriter(out, engine="xlsxwriter") as writer:
-        df.to_excel(writer, sheet_name="detections", index=False)
+        df.to_excel(writer, sheet_name="detections" if st.session_state.language == 'en' else "检测结果", index=False)
     return out
 
 def zip_files(files: List[Path], out_zip: Path) -> Path:
@@ -433,64 +577,67 @@ def zip_files(files: List[Path], out_zip: Path) -> Path:
     return out_zip
 
 # ========================= 标签页 =========================
-tab_img, tab_folder, tab_video, tab_camera, tab_fuzzy = st.tabs(
-    ["🖼️ 图片检测", "🗂️ 批量图片", "🎞️ 视频检测", "📷 摄像头检测", "🧮 模糊预测"]
-)
+tab_img, tab_folder, tab_video, tab_camera, tab_fuzzy = st.tabs([
+    t('tab_image'), 
+    t('tab_batch'), 
+    t('tab_video'), 
+    t('tab_camera'), 
+    t('tab_fuzzy')
+])
 
 # -------------------------------- 1) 图片检测 --------------------------------
 with tab_img:
-    st.markdown("#### 🖼️ 图片检测")
+    st.markdown(f"#### {t('tab_image')}")
     col1, col2 = st.columns(2)
 
     # 左侧：原图
     with col1:
-        st.markdown("<div class='card'><b>原图</b></div>", unsafe_allow_html=True)
-        img_file = st.file_uploader("上传图片", type=["jpg","jpeg","png","bmp","webp"], key="single_img_main")
+        st.markdown(f"<div class='card'><b>{t('image_original')}</b></div>", unsafe_allow_html=True)
+        img_file = st.file_uploader(t('image_upload'), type=["jpg","jpeg","png","bmp","webp"], key="single_img_main")
         if img_file:
-            st.image(Image.open(img_file), caption="原图", use_column_width=True)
+            st.image(Image.open(img_file), caption=t('image_original'), use_column_width=True)
 
     # 右侧：检测与结果
     with col2:
-        st.markdown("<div class='card'><b>检测与结果</b></div>", unsafe_allow_html=True)
-        run_single = st.button("🚀 开始检测", type="primary", use_container_width=True, disabled=img_file is None)
+        st.markdown(f"<div class='card'><b>{t('image_detection')}</b></div>", unsafe_allow_html=True)
+        run_single = st.button(t('image_run'), type="primary", use_container_width=True, disabled=img_file is None)
 
         if run_single and img_file:
             files = {"file": (img_file.name, img_file.getvalue(), img_file.type or "image/jpeg")}
             data = {"model_type": model_value}
             # params = {"conf": conf}
 
-            with st.spinner("本地模型推理中..."):
+            with st.spinner("本地模型推理中..." if st.session_state.language == 'zh' else "Local model inferencing..."):
                 # det_img, df = predict_on_image(img_file.getvalue(), model_value, conf)
                 det_img, df = predict_on_image(img_file.getvalue(), model_value)
-                
 
-            st.image(det_img, caption="检测结果", use_column_width=True)
+            st.image(det_img, caption=t('image_result'), use_column_width=True)
             if not df.empty:
                 st.dataframe(df, use_container_width=True)
                 c1, c2 = st.columns(2)
                 with c1:
-                    if st.button("下载 Excel（检测表）", use_container_width=True):
+                    if st.button(t('image_download_excel'), use_container_width=True):
                         xlsx_path = save_table_to_excel(df, "image_detect_result.xlsx")
-                        st.download_button("点击下载", data=open(xlsx_path, "rb").read(),
+                        st.download_button(t('image_download_excel'), data=open(xlsx_path, "rb").read(),
                                            file_name=xlsx_path.name,
                                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 with c2:
-                    if st.button("下载 标注图片", use_container_width=True):
+                    if st.button(t('image_download_img'), use_container_width=True):
                         bio = io.BytesIO();
                         det_img.save(bio, format="JPEG")
-                        st.download_button("点击下载", data=bio.getvalue(), file_name="image_detect_result.jpg",
+                        st.download_button(t('image_download_img'), data=bio.getvalue(), file_name="image_detect_result.jpg",
                                            mime="image/jpeg")
 
 # ----------------------------- 2) 批量图片检测 -----------------------------
 with tab_folder:
-    st.markdown("#### 🗂️ 批量图片检测")
+    st.markdown(f"#### {t('tab_batch')}")
     files = st.file_uploader(
-        "选择多张图片",
+        t('batch_upload'),
         type=["jpg", "jpeg", "png", "bmp", "webp"],
         accept_multiple_files=True,
         key="multi_imgs",
     )
-    go = st.button("🚀 开始批量检测", type="primary", disabled=not files)
+    go = st.button(t('batch_run'), type="primary", disabled=not files)
 
     if go and files:
         all_tables: List[pd.DataFrame] = []
@@ -501,14 +648,14 @@ with tab_folder:
 
         total = len(files)
         for i, f in enumerate(files, start=1):
-            status.info(f"推理中：{f.name} ({i}/{total})")
-            with st.spinner(f"推理：{f.name}"):
+            status.info(f"{t('batch_processing')}{f.name} ({i}/{total})")
+            with st.spinner(f"{t('batch_processing')}{f.name}"):
                 # det_img, df = predict_on_image(f.getvalue(), model_value, conf)
                 det_img, df = predict_on_image(f.getvalue(), model_value)
 
                 # 结果表
                 if not df.empty:
-                    df["path"] = f.name
+                    df[t("path")] = f.name
                     all_tables.append(df)
 
                 # 保存标注图到本地，稍后打包下载
@@ -524,20 +671,20 @@ with tab_folder:
             st.dataframe(df_all, use_container_width=True)
             xlsx_path = save_table_to_excel(df_all, "batch_detect.xlsx")
             st.download_button(
-                "📥 下载 Excel（批量检测表）",
+                t('batch_download_excel'),
                 data=open(xlsx_path, "rb").read(),
                 file_name=xlsx_path.name,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
             )
         else:
-            st.info("未检测到目标。")
+            st.info(t('batch_no_results'))
 
         # 打包标注图
         if out_imgs:
             zpath = zip_files(out_imgs, Path("batch_detect_images.zip"))
             st.download_button(
-                "🗜️ 打包下载 标注图片ZIP",
+                t('batch_download_zip'),
                 data=open(zpath, "rb").read(),
                 file_name=zpath.name,
                 mime="application/zip",
@@ -547,21 +694,19 @@ with tab_folder:
         status.empty()
         progress.empty()
 
-
-# -------------------------------- 3) 视频检测 --------------------------------
 # -------------------------------- 3) 视频检测 --------------------------------
 with tab_video:
-    st.markdown("#### 🎞️ 视频检测")
+    st.markdown(f"#### {t('tab_video')}")
     vid_file = st.file_uploader(
-        "上传视频", type=["mp4", "mov", "avi", "mkv"], key="video_file"
+        t('video_upload'), type=["mp4", "mov", "avi", "mkv"], key="video_file"
     )
     # run_vid = st.button("🚀 开始视频检测", type="primary", disabled=vid_file is None)
-    run_vid = st.button("🚀 开始视频检测", type="primary", disabled=(vid_file is None or not CV2_OK))
+    run_vid = st.button(t('video_run'), type="primary", disabled=(vid_file is None or not CV2_OK))
     if not CV2_OK:
-        st.warning("当前云端环境未能加载 OpenCV（cv2），视频处理功能已禁用。请在本地运行或安装支持的 OpenCV 版本。")
+        st.warning(t('video_disabled'))
 
     if run_vid and vid_file:
-        with st.spinner("本地视频处理...（按 CPU 速度可能较慢）"):
+        with st.spinner(t('video_processing')):
             # 本地逐帧推理并导出处理后的视频
             out_path = process_video(
                 # vid_file.getvalue(), model_value, conf, max_frames=None
@@ -569,18 +714,16 @@ with tab_video:
             )
         st.video(str(out_path))
         st.download_button(
-            "下载处理后视频",
+            t('video_download'),
             data=open(out_path, "rb").read(),
             file_name=out_path.name,
             mime="video/mp4",
         )
 
-
-# -------------------------- 4) 摄像头检测（WebSocket） --------------------------
 # -------------------------- 4) 摄像头检测（拍照版，手动开启） --------------------------
 with tab_camera:
-    st.markdown("#### 📷 摄像头检测（拍照版）")
-    st.caption("点击“打开摄像头”后才渲染拍照控件；点击“关闭摄像头”停止并隐藏。")
+    st.markdown(f"#### {t('camera_title')}")
+    st.caption(t('camera_caption'))
 
     # 初始化状态
     if "cam_on" not in st.session_state:
@@ -588,62 +731,42 @@ with tab_camera:
 
     col_a, col_b = st.columns(2)
     if not st.session_state.cam_on:
-        if col_a.button("🎬 打开摄像头", type="primary"):
+        if col_a.button(t('camera_open'), type="primary"):
             st.session_state.cam_on = True
             st.rerun()
-        col_b.button("⏹ 关闭摄像头", disabled=True)
-        st.info("摄像头未开启。点击“打开摄像头”开始拍照。")
+        col_b.button(t('camera_close'), disabled=True)
+        st.info(t('camera_not_started'))
     else:
-        if col_b.button("⏹ 关闭摄像头", type="secondary"):
+        if col_b.button(t('camera_close'), type="secondary"):
             st.session_state.cam_on = False
             st.rerun()
-        col_a.button("🎬 打开摄像头", disabled=True)
+        col_a.button(t('camera_open'), disabled=True)
 
         # 只有在 cam_on=True 时才渲染 camera_input，避免页面加载就触发权限与取流
-        snap = st.camera_input("点击下方按钮拍一张", key="cam_shot")
+        snap = st.camera_input(t('camera_shot'), key="cam_shot")
 
-        go = st.button("检测此照片", type="primary", disabled=(snap is None))
+        go = st.button(t('camera_detect'), type="primary", disabled=(snap is None))
         if go and snap is not None:
-            with st.spinner("本地模型推理中..."):
+            with st.spinner("本地模型推理中..." if st.session_state.language == 'zh' else "Local model inferencing..."):
                 # det_img, df = predict_on_image(snap.getvalue(), model_value, conf)
                 det_img, df = predict_on_image(snap.getvalue(), model_value)
-            st.image(det_img, caption="检测结果", use_column_width=True)
+            st.image(det_img, caption=t('image_result'), use_column_width=True)
             if not df.empty:
                 st.dataframe(df, use_container_width=True)
 
 # -------------------------------- 5) 模糊预测 --------------------------------
 with tab_fuzzy:
-    st.markdown("#### 🧮 模糊预测")
-    st.markdown("<div class='card'><b>输入指标参数</b></div>", unsafe_allow_html=True)
+    st.markdown(f"#### {t('fuzzy_title')}")
+    st.markdown(f"<div class='card'><b>{t('fuzzy_input')}</b></div>", unsafe_allow_html=True)
 
     c1, c2 = st.columns(2)
     with c1:
-        day_behavior   = st.number_input("日间行为（1~3）",  min_value=1.0, max_value=3.0, value=3.0, step=1.0)
-        night_behavior = st.number_input("夜间行为（1~3）",  min_value=1.0, max_value=3.0, value=1.0, step=1.0)
+        day_behavior   = st.number_input(t('fuzzy_day'),  min_value=1.0, max_value=3.0, value=3.0, step=1.0)
+        night_behavior = st.number_input(t('fuzzy_night'),  min_value=1.0, max_value=3.0, value=1.0, step=1.0)
     with c2:
-        surface_features = st.number_input("体表特征（1~3）", min_value=1.0, max_value=3.0, value=3.0, step=1.0)
-        pathogen         = st.number_input("病原特征（1~3）", min_value=1.0, max_value=3.0, value=3.0, step=1.0)
+        surface_features = st.number_input(t('fuzzy_surface'), min_value=1.0, max_value=3.0, value=3.0, step=1.0)
+        pathogen         = st.number_input(t('fuzzy_pathogen'), min_value=1.0, max_value=3.0, value=3.0, step=1.0)
 
-    if st.button("🧪 预测", type="primary"):
+    if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
-        st.success(f"风险值: {r['risk_value']}，状态: {r['risk_status']}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
