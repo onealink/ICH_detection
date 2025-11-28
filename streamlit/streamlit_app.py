@@ -178,9 +178,12 @@ def load_models():
     models = {}
     for k, p in MODEL_PATHS.items():
         if not Path(p).exists():
+            # 修复：使用翻译函数t()替代硬编码中文
             st.error(t('model_not_found').format(p=p, k=k))
-        models[k] = YOLO(p)
-        st.success(t('model_loaded').format(k=k, p=p))
+        else:
+            models[k] = YOLO(p)
+            # 修复：使用翻译函数t()替代硬编码中文
+            st.success(t('model_loaded').format(k=k, p=p))
     return models
 
 MODELS = load_models()
@@ -782,6 +785,7 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
 
 
 
