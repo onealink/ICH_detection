@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_extras.switch_page_button import switch_page
+# 移除未使用的导入：from streamlit_extras.switch_page_button import switch_page
 import base64
 import io
 import json
@@ -12,6 +12,7 @@ import requests
 from PIL import Image
 from websocket import create_connection, WebSocket
 from ultralytics import YOLO
+# ... 其余代码保持不变
 # 可选导入 OpenCV（云端没有 GUI，用 headless 轮子即可；失败时禁用视频）
 try:
     import cv2  # noqa: F401
@@ -770,3 +771,4 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
