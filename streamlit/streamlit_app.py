@@ -355,7 +355,7 @@ with st.sidebar:
     ### 🎓 宁波大学 · 病害实验室
     """)
     # st.image("img/img1.png", width='stretch')
-    st.image(str(IMG_DIR / "img1.png"), use_column_width=True)
+    # st.image(str(IMG_DIR / "img1.png"), use_column_width=True)
 
     # st.markdown("---")
     # ======= 以下为“服务配置 + 模型参数”区域，外面包了一个容器，已通过 CSS 隐藏 =======
@@ -627,6 +627,7 @@ with tab_fuzzy:
     if st.button("🧪 预测", type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(f"风险值: {r['risk_value']}，状态: {r['risk_status']}")
+
 
 
 
