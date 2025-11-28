@@ -14,13 +14,13 @@ websocket-client==1.8.0
 # 图像处理
 opencv-python-headless==4.8.1.78
 
-# 机器学习
+# 模糊逻辑 - 使用兼容版本
 scikit-fuzzy==0.4.2
 
-# YOLOv8 - 这个会自动安装兼容的PyTorch版本
+# YOLOv8
 ultralytics==8.3.74
 
-# 移除以下有问题的依赖：
-# torch==2.5.1
-# torchvision==0.20.1
-# torchaudio==2.5.1
+# 确保 Python 3.11 兼容的 PyTorch
+torch==2.2.2
+torchvision==0.17.2
+torchaudio==2.2.2
