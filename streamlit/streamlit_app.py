@@ -167,7 +167,7 @@ DEFAULT_CONF = 0.6  # 默认置信度
 # ========= 本地模型与工具 =========
 
 # 如果三个类别共用同一权重，先都指向 best.pt；将来有不同权重再改这里的路径即可
-# MODEL_PATHS = {"Lyc": "best.pt", "Ich": "best.pt", "Tomont": "best.pt"}
+# MODEL_PATHS = {"Lyc": "best.pt", "Ich": "best.pt", "Tomont": "tomont.best.pt"}
 
 @st.cache_resource
 def load_models():
@@ -772,5 +772,6 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
 
 
