@@ -85,7 +85,9 @@ translations = {
         'category': '类别',
         'confidence': '置信度',
         'location': '位置',
-        'path': '路径'
+        'path': '路径',
+        'model_not_found': '模型文件不存在：{p}（{k}模型）',
+        'model_loaded': '成功加载模型：{k} -> {p}'
     },
     'en': {
         'page_title': 'YOLO Disease Detection',
@@ -142,7 +144,9 @@ translations = {
         'category': 'Category',
         'confidence': 'Confidence',
         'location': 'Location',
-        'path': 'Path'
+        'path': 'Path',
+        'model_not_found': 'Model file not found: {p} ({k} model)',
+        'model_loaded': 'Successfully loaded model: {k} -> {p}'
     }
 }
 
@@ -174,15 +178,9 @@ def load_models():
     models = {}
     for k, p in MODEL_PATHS.items():
         if not Path(p).exists():
-            if st.session_state.language == 'zh':
-                st.error(f"模型文件不存在：{p}（{k}模型）")
-            else:
-                st.error(f"Model file not found: {p} ({k} model)")
+            st.error(t('model_not_found').format(p=p, k=k))
         models[k] = YOLO(p)
-        if st.session_state.language == 'zh':
-            st.success(f"成功加载模型：{k} -> {p}")
-        else:
-            st.success(f"Successfully loaded model: {k} -> {p}")
+        st.success(t('model_loaded').format(k=k, p=p))
     return models
 
 MODELS = load_models()
@@ -784,6 +782,7 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
 
 
 
