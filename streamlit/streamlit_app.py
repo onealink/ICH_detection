@@ -157,9 +157,10 @@ st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 
 # 以当前文件所在目录为基准
 BASE_DIR = Path(__file__).parent
-WEIGHTS = BASE_DIR / "best.pt"
+WEIGHTS = BASE_DIR / "best.pt"  # Ich模型
+TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"  # 新增Tomont模型路径
 IMG_DIR = BASE_DIR / "img"
-MODEL_PATHS = {"Lyc": str(WEIGHTS), "Ich": str(WEIGHTS), "Tomont": str(WEIGHTS)}
+MODEL_PATHS = {"Ich": str(WEIGHTS), "Tomont": str(TOMONT_WEIGHTS)}  # 移除Lyc，分别对应不同模型
 DEFAULT_CONF = 0.6  # 默认置信度
 
 # 你的模型清单（可扩展多个）
@@ -771,4 +772,5 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
 
