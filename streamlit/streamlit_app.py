@@ -284,15 +284,16 @@ def process_video(video_bytes: bytes, model_key: str, conf: float | None = None,
     cap.release(); vw.release()
     return out_path
 
-# 新增：轨迹分析核心函数
-def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = DEFAULT_CONF, max_frames: int = None) -> dict:
+# 新增：轨迹分析核心函数（修改后）
+def calculate_fish_trajectory(video_bytes: bytes, conf: float = DEFAULT_CONF, max_frames: int = None) -> dict:
     """
-    分析视频中金鱼的运动轨迹，返回统计结果
+    分析视频中金鱼的运动轨迹（强制使用Ich模型），返回统计结果+带轨迹的视频路径
     返回值：{
         "total_distance": 总路程(像素),
         "average_speed": 平均速度(像素/秒),
         "video_duration": 视频时长(秒),
         "total_frames": 总帧数,
+        "processed_video_path": 带轨迹的视频路径,
         "success": 是否成功,
         "message": 提示信息
     }
@@ -304,13 +305,15 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
             "total_distance": 0,
             "average_speed": 0,
             "video_duration": 0,
-            "total_frames": 0
+            "total_frames": 0,
+            "processed_video_path": ""
         }
     
     # 初始化变量
     prev_center = None  # 上一帧金鱼中心坐标
     total_distance = 0.0  # 总路程
     total_frames = 0  # 总帧数
+    trajectory_points = []  # 轨迹坐标列表（用于绘制）
     # 定义金鱼类别（排除包囊）
     fish_categories = {t("healthy"), t("subhealthy"), t("diseased"), "健康", "亚健康", "患病", "Healthy", "Subhealthy", "Diseased"}
     
@@ -327,12 +330,20 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
             "total_distance": 0,
             "average_speed": 0,
             "video_duration": 0,
-            "total_frames": 0
+            "total_frames": 0,
+            "processed_video_path": ""
         }
     
     # 获取视频基本信息
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0  # 视频帧率
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))  # 视频总帧数
+    
+    # 初始化视频写入器（保存带轨迹的视频）
+    processed_video_path = Path(f"traj_processed_{int(time.time())}.mp4")
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    out = cv2.VideoWriter(str(processed_video_path), fourcc, fps, (w, h))
     
     # 逐帧处理
     progress_bar = st.progress(0)
@@ -353,22 +364,28 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
         progress_bar.progress(progress)
         status_text.text(f"{t('tracking_processing')} {total_frames}/{total_frames_total}")
         
-        # 模型推理
+        # 模型推理（强制使用Ich模型）
         try:
-            r = MODELS[model_key].predict(source=frame, conf=conf, imgsz=640, verbose=False)[0]
+            r = MODELS["Ich"].predict(source=frame, conf=conf, imgsz=640, verbose=False)[0]
         except Exception as e:
             status_text.empty()
             progress_bar.empty()
             cap.release()
+            out.release()
             in_path.unlink(missing_ok=True)
+            processed_video_path.unlink(missing_ok=True)
             return {
                 "success": False,
                 "message": f"帧推理失败: {str(e)}",
                 "total_distance": 0,
                 "average_speed": 0,
                 "video_duration": 0,
-                "total_frames": total_frames
+                "total_frames": total_frames,
+                "processed_video_path": ""
             }
+        
+        # 绘制检测框（保留原检测效果）
+        frame_with_detect = r.plot()
         
         # 提取当前帧金鱼的中心坐标（取置信度最高的）
         current_center = None
@@ -384,22 +401,34 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
                         max_conf = conf_score
                         # 计算检测框中心坐标
                         xyxy = box.xyxy.cpu().numpy()[0]  # [x1, y1, x2, y2]
-                        center_x = (xyxy[0] + xyxy[2]) / 2
-                        center_y = (xyxy[1] + xyxy[3]) / 2
+                        center_x = int((xyxy[0] + xyxy[2]) / 2)
+                        center_y = int((xyxy[1] + xyxy[3]) / 2)
                         current_center = (center_x, center_y)
         
-        # 计算与上一帧的距离
+        # 计算与上一帧的距离 + 记录轨迹点
         if prev_center is not None and current_center is not None:
             # 欧氏距离公式：√[(x2-x1)² + (y2-y1)²]
             distance = math.hypot(current_center[0] - prev_center[0], current_center[1] - prev_center[1])
             total_distance += distance
+            # 添加轨迹点
+            trajectory_points.append(current_center)
+            # 绘制轨迹连线（红色，线宽2）
+            cv2.line(frame_with_detect, prev_center, current_center, (0, 0, 255), 2)
+        # 绘制当前中心坐标点（蓝色，半径5）
+        if current_center is not None:
+            cv2.circle(frame_with_detect, current_center, 5, (255, 0, 0), -1)
+            trajectory_points.append(current_center)
         
         # 更新上一帧坐标
         if current_center is not None:
             prev_center = current_center
+        
+        # 写入带轨迹的视频帧
+        out.write(frame_with_detect)
     
     # 清理资源
     cap.release()
+    out.release()
     in_path.unlink(missing_ok=True)
     progress_bar.empty()
     status_text.empty()
@@ -416,7 +445,8 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
             "total_distance": 0,
             "average_speed": 0,
             "video_duration": round(video_duration, 2),
-            "total_frames": total_frames
+            "total_frames": total_frames,
+            "processed_video_path": str(processed_video_path) if processed_video_path.exists() else ""
         }
     
     return {
@@ -425,7 +455,8 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
         "total_distance": round(total_distance, 2),
         "average_speed": round(average_speed, 2),
         "video_duration": round(video_duration, 2),
-        "total_frames": total_frames
+        "total_frames": total_frames,
+        "processed_video_path": str(processed_video_path) if processed_video_path.exists() else ""
     }
 
 def save_table_to_excel(df: pd.DataFrame, filename: str) -> Path:
@@ -798,6 +829,8 @@ with tab_camera:
 # -------------------------- 5) 轨迹跟踪（新增） --------------------------
 with tab_tracking:
     st.markdown(f"#### {t('tracking_title')}")
+    # 新增：明确标注使用Ich模型
+    st.markdown(f"<div class='note'>当前使用模型：Ich（多子小瓜虫病检测模型）</div>", unsafe_allow_html=True)
     
     # 视频上传
     vid_file = st.file_uploader(
@@ -806,6 +839,11 @@ with tab_tracking:
         key="tracking_video_file",
         help="支持常见视频格式，建议时长不超过1分钟以保证分析速度"
     )
+    
+    # 展示原始视频（上传后立即显示）
+    if vid_file:
+        st.markdown("### 🎬 原始视频")
+        st.video(vid_file)
     
     # 置信度阈值设置
     conf_threshold = st.slider(
@@ -839,13 +877,12 @@ with tab_tracking:
     if not CV2_OK:
         st.warning(t('video_disabled'))
     
-    # 执行轨迹分析
+        # 执行轨迹分析
     if run_tracking and vid_file and CV2_OK:
         with st.spinner(t('tracking_processing')):
-            # 调用轨迹分析函数
+            # 调用轨迹分析函数（强制使用Ich模型，不再传model_value）
             result = calculate_fish_trajectory(
                 video_bytes=vid_file.getvalue(),
-                model_key=model_value,
                 conf=conf_threshold,
                 max_frames=max_frames if max_frames > 0 else None
             )
@@ -888,6 +925,19 @@ with tab_tracking:
                 </div>
                 """, unsafe_allow_html=True)
             
+            # 新增：展示带轨迹的检测视频
+            if result["processed_video_path"] and Path(result["processed_video_path"]).exists():
+                st.markdown("### 🎬 带轨迹的检测视频")
+                st.video(result["processed_video_path"])
+                # 新增：下载带轨迹视频的按钮
+                st.download_button(
+                    label="下载带轨迹的检测视频",
+                    data=open(result["processed_video_path"], "rb").read(),
+                    file_name=f"traj_video_{int(time.time())}.mp4",
+                    mime="video/mp4",
+                    use_container_width=True
+                )
+            
             # 提示信息
             if result["total_distance"] == 0:
                 st.info(result["message"])
@@ -912,3 +962,4 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
