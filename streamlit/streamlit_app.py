@@ -911,10 +911,26 @@ with tab_tracking:
         help="支持常见视频格式，建议时长不超过1分钟以保证分析速度"
     )
     
-    # 展示原始视频
+    # 核心修改：分栏展示原视频 + 轨迹视频预览
     if vid_file:
-        st.markdown("### 🎬 原始视频")
-        st.video(vid_file)
+        st.markdown("### 🎬 视频预览")
+        col_video_origin, col_video_traj = st.columns(2)
+        
+        # 左列：原视频
+        with col_video_origin:
+            st.markdown("#### 原始视频")
+            st.video(vid_file)
+        
+        # 右列：轨迹视频预览（初始提示，分析后显示）
+        with col_video_traj:
+            st.markdown("#### 带轨迹跟踪的视频（分析后显示）")
+            # 创建占位符，用于后续更新轨迹视频
+            traj_video_placeholder = st.empty()
+            traj_video_placeholder.info("请点击“开始轨迹分析”，完成后将显示带轨迹的视频预览")
+    else:
+        # 未上传视频时，隐藏视频预览区域
+        traj_video_placeholder = None
+        st.info("请先上传视频文件，上传后将显示原始视频和轨迹视频预览区域")
     
     # 置信度阈值（降低默认值）
     conf_threshold = st.slider(
@@ -997,15 +1013,17 @@ with tab_tracking:
                 </div>
                 """, unsafe_allow_html=True)
             
-            # 展示带轨迹的检测视频
-            if result["processed_video_path"] and Path(result["processed_video_path"]).exists():
-                st.markdown("### 🎬 带轨迹的检测视频")
-                st.video(result["processed_video_path"])
-                # 下载按钮
+            # 核心修改：更新轨迹视频预览区域
+            if result["processed_video_path"] and Path(result["processed_video_path"]).exists() and traj_video_placeholder:
+                traj_video_placeholder.empty()  # 清空提示
+                traj_video_placeholder.video(result["processed_video_path"])
+                
+                # 保留下载按钮（移至结果区域，更合理）
+                st.markdown("### 📥 视频下载")
                 st.download_button(
                     label="下载带轨迹的检测视频",
                     data=open(result["processed_video_path"], "rb").read(),
-                    file_name=f"traj_video_{model_tracking}_{int(time.time())}.mp4",  # 文件名包含模型名
+                    file_name=f"traj_video_{model_tracking}_{int(time.time())}.mp4",
                     mime="video/mp4",
                     use_container_width=True
                 )
@@ -1017,7 +1035,10 @@ with tab_tracking:
                 st.success(result["message"])
         
         else:
-            # 失败提示
+            # 失败提示：更新轨迹视频预览区域为错误信息
+            if traj_video_placeholder:
+                traj_video_placeholder.empty()
+                traj_video_placeholder.error(f"轨迹分析失败：{result['message']}")
             st.error(f"分析失败：{result['message']}")
 
 # -------------------------------- 6) 模糊预测 --------------------------------
@@ -1034,5 +1055,6 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
 
 
