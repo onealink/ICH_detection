@@ -834,14 +834,10 @@ with tab_camera:
 # -------------------------- 5) 轨迹跟踪（新增） --------------------------
 with tab_tracking:
     st.markdown(f"#### {t('tracking_title')}")
-    # 新增：轨迹跟踪模型选择
-    model_tracking = st.selectbox("选择分析模型", options=["Ich", "行为"], format_func=lambda x: t(x))
-    st.markdown(f"<div class='note'>当前使用模型：{t(model_tracking)}（{model_tracking}）</div>", unsafe_allow_html=True)
-
-# 再将推理处改为：
-r = MODELS[model_tracking].predict(source=frame, conf=conf, imgsz=640, verbose=False)[0]
+    # 新增：明确标注使用Ich模型
+    st.markdown(f"<div class='note'>当前使用模型：Ich（多子小瓜虫病检测模型）</div>", unsafe_allow_html=True)
     
-    # 视频上传
+    # 视频上传（修复缩进：删除多余的空格/Tab，与外层with同级）
     vid_file = st.file_uploader(
         t('tracking_upload'),
         type=["mp4", "mov", "avi", "mkv"],
@@ -886,7 +882,7 @@ r = MODELS[model_tracking].predict(source=frame, conf=conf, imgsz=640, verbose=F
     if not CV2_OK:
         st.warning(t('video_disabled'))
     
-        # 执行轨迹分析
+    # 执行轨迹分析（修复缩进：原代码此处多了缩进，需对齐）
     if run_tracking and vid_file and CV2_OK:
         with st.spinner(t('tracking_processing')):
             # 调用轨迹分析函数（强制使用Ich模型，不再传model_value）
@@ -971,6 +967,7 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
 
 
 
