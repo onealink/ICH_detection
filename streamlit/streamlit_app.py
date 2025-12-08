@@ -306,16 +306,27 @@ def process_video(video_bytes: bytes, model_key: str, conf: float | None = None,
     # 输出文件（绝对路径）
     out_path = BASE_DIR / f"processed_{int(time.time())}.mp4"
     
-    # 关键修复：使用H.264编码（avc1），兼容Streamlit预览
-    try:
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')  # H.264（浏览器/Streamlit最优兼容）
-    except:
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # 降级兼容
+    # 关键修复：多编码兜底 + 调试
+    fourcc_list = ['avc1', 'mp4v', 'x264', 'mpeg']
+    fourcc = None
+    for codec in fourcc_list:
+        try:
+            fourcc = cv2.VideoWriter_fourcc(*codec)
+            break
+        except:
+            continue
+    if fourcc is None:
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # 最终兜底
     
     # 强制参数为整数
     vw = cv2.VideoWriter(str(out_path), fourcc, int(fps), (int(w), int(h)))
+    if not vw.isOpened():
+        cap.release()
+        in_path.unlink()
+        raise RuntimeError(f"视频写入器初始化失败！编码：{codec}，尺寸：{w}x{h}，帧率：{fps}")
 
     i = 0
+    frame_written = 0  # 统计写入帧数
     while True:
         ok, frame = cap.read()
         if not ok: break
@@ -334,20 +345,31 @@ def process_video(video_bytes: bytes, model_key: str, conf: float | None = None,
             raise RuntimeError("无任何可用模型！")
         
         r = MODELS[model_key].predict(source=frame, conf=c, imgsz=640, verbose=False)[0]
-        vw.write(r.plot())
+        draw_frame = r.plot()
+        # 强制写入检查
+        if vw.write(draw_frame):
+            frame_written += 1
 
     # 释放资源
     cap.release()
     vw.release()
     in_path.unlink()  # 删除临时输入文件
     
+    # 调试：检查是否有帧写入
+    if frame_written == 0:
+        out_path.unlink()
+        raise RuntimeError("未成功写入任何视频帧！请检查视频是否可解码")
+    
     # 读取为字节流（用于预览）
-    with open(out_path, "rb") as f:
-        video_bytes = f.read()
+    try:
+        with open(out_path, "rb") as f:
+            video_bytes = f.read()
+    except:
+        video_bytes = b""  # 兜底
     
     return out_path, video_bytes
 
-# 修复后的轨迹分析函数（核心：H.264编码 + 字节流返回）
+# 修复后的轨迹分析函数（核心：H.264编码 + 字节流返回 + 调试）
 def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = DEFAULT_CONF, max_frames: int = None) -> dict:
     """
     分析视频中金鱼的运动轨迹，返回包含字节流的结果
@@ -385,6 +407,7 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
     total_distance = 0.0
     total_frames = 0
     trajectory_points = []
+    frame_written = 0  # 统计写入帧数
     
     # 动态匹配当前模型的类别名
     current_model = MODELS[model_key]
@@ -422,13 +445,32 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
-    # 输出视频（绝对路径 + H.264编码）
+    # 输出视频（绝对路径 + 多编码兜底）
     processed_video_path = BASE_DIR / f"traj_processed_{int(time.time())}.mp4"
-    try:
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')  # H.264
-    except:
+    fourcc = None
+    for codec in ['avc1', 'mp4v', 'x264']:
+        try:
+            fourcc = cv2.VideoWriter_fourcc(*codec)
+            break
+        except:
+            continue
+    if fourcc is None:
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    
     out = cv2.VideoWriter(str(processed_video_path), fourcc, int(fps), (int(w), int(h)))
+    if not out.isOpened():
+        cap.release()
+        in_path.unlink()
+        return {
+            "success": False,
+            "message": f"视频写入器初始化失败！尺寸：{w}x{h}，帧率：{fps}",
+            "total_distance": 0,
+            "average_speed": 0,
+            "video_duration": 0,
+            "total_frames": 0,
+            "processed_video_path": "",
+            "processed_video_bytes": b""
+        }
     
     # 进度条
     progress_bar = st.progress(0)
@@ -496,8 +538,9 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
             cv2.circle(frame_with_detect, current_center, 5, (255, 0, 0), -1)
             prev_center = current_center
         
-        # 写入视频帧
-        out.write(frame_with_detect)
+        # 强制写入并计数
+        if out.write(frame_with_detect):
+            frame_written += 1
     
     # 清理资源
     cap.release()
@@ -506,11 +549,28 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
     progress_bar.empty()
     status_text.empty()
     
-    # 读取视频字节流（用于预览）
+    # 检查是否有帧写入
+    if frame_written == 0:
+        processed_video_path.unlink(missing_ok=True)
+        return {
+            "success": True,
+            "message": f"{t('no_fish_detected')} | 未写入任何视频帧",
+            "total_distance": 0,
+            "average_speed": 0,
+            "video_duration": 0,
+            "total_frames": total_frames,
+            "processed_video_path": "",
+            "processed_video_bytes": b""
+        }
+    
+    # 读取视频字节流（兜底：文件路径优先）
     video_bytes = b""
     if processed_video_path.exists():
-        with open(processed_video_path, "rb") as f:
-            video_bytes = f.read()
+        try:
+            with open(processed_video_path, "rb") as f:
+                video_bytes = f.read()
+        except:
+            pass
     
     # 计算统计值
     video_duration = total_frames / fps if fps > 0 else 0
@@ -531,7 +591,7 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
     
     return {
         "success": True,
-        "message": f"轨迹分析完成（使用模型：{model_key}）",
+        "message": f"轨迹分析完成（使用模型：{model_key}），共写入{frame_written}帧",
         "total_distance": round(total_distance, 2),
         "average_speed": round(average_speed, 2),
         "video_duration": round(video_duration, 2),
@@ -887,23 +947,34 @@ with tab_video:
         st.warning(t('video_disabled'))
     
     if run_vid and vid_file:
-        with st.spinner(t('video_processing')):
-            # 调用修复后的函数，获取路径+字节流
-            out_path, video_bytes = process_video(vid_file.getvalue(), model_value, max_frames=None)
-        
-        # 核心修复：使用字节流预览（而非文件路径）
-        st.markdown("### 🎬 处理后的视频")
-        st.video(video_bytes, format="video/mp4")
-        
-        # 下载按钮
-        st.download_button(
-            t('video_download'),
-            data=video_bytes,  # 使用字节流下载
-            file_name=out_path.name,
-            mime="video/mp4",
-            use_container_width=True
-        )
-
+        try:
+            with st.spinner(t('video_processing')):
+                # 调用修复后的函数，获取路径+字节流
+                out_path, video_bytes = process_video(vid_file.getvalue(), model_value, max_frames=None)
+            
+            # 核心修复：优先字节流，兜底文件路径
+            st.markdown("### 🎬 处理后的视频")
+            if video_bytes:
+                st.video(video_bytes, format="video/mp4")
+            elif out_path.exists():
+                st.video(str(out_path))
+            else:
+                st.error("视频预览失败，但文件已生成")
+            
+            # 下载按钮（兜底）
+            download_data = video_bytes if video_bytes else open(out_path, "rb").read() if out_path.exists() else None
+            if download_data:
+                st.download_button(
+                    t('video_download'),
+                    data=download_data,  # 使用字节流下载
+                    file_name=out_path.name,
+                    mime="video/mp4",
+                    use_container_width=True
+                )
+            else:
+                st.warning("无法下载视频：文件损坏")
+        except Exception as e:
+            st.error(f"视频处理失败：{str(e)}")
 # -------------------------- 4) 摄像头检测 --------------------------
 with tab_camera:
     st.markdown(f"#### {t('camera_title')}")
@@ -950,30 +1021,28 @@ with tab_tracking:
         st.error("无可用模型，请先检查模型文件！")
         model_tracking = None
     
-    # 视频上传
-    vid_file = st.file_uploader(
-        t('tracking_upload'),
-        type=["mp4", "mov", "avi", "mkv"],
-        key="tracking_video_file",
-        help="支持常见视频格式，建议时长不超过1分钟以保证分析速度"
-    )
+    # 初始化视频预览占位符（关键：提前初始化，避免分支问题）
+    st.markdown("### 🎬 视频预览")
+    col_origin, col_traj = st.columns(2)
+    traj_video_placeholder = col_traj.empty()  # 提前初始化
     
-    # 分栏展示原视频+轨迹视频预览区
-    if vid_file:
-        st.markdown("### 🎬 视频预览")
-        col_origin, col_traj = st.columns(2)
-        
-        with col_origin:
-            st.markdown("#### 原始视频")
+    with col_origin:
+        st.markdown("#### 原始视频")
+        # 视频上传
+        vid_file = st.file_uploader(
+            t('tracking_upload'),
+            type=["mp4", "mov", "avi", "mkv"],
+            key="tracking_video_file",
+            help="支持常见视频格式，建议时长不超过1分钟以保证分析速度"
+        )
+        if vid_file:
             st.video(vid_file)
-        
-        with col_traj:
-            st.markdown("#### 带轨迹的视频（分析后显示）")
-            traj_video_placeholder = st.empty()
-            traj_video_placeholder.info("点击“开始轨迹分析”后，此处将显示带轨迹的视频")
-    else:
-        traj_video_placeholder = None
-        st.info("请先上传视频文件")
+        else:
+            st.info("请先上传视频文件")
+    
+    with col_traj:
+        st.markdown("#### 带轨迹的视频（分析后显示）")
+        traj_video_placeholder.info("点击“开始轨迹分析”后，此处将显示带轨迹的视频")
     
     # 置信度阈值（降低默认值）
     conf_threshold = st.slider(
@@ -1055,21 +1124,30 @@ with tab_tracking:
                 </div>
                 """, unsafe_allow_html=True)
             
-            # 修复：使用字节流预览轨迹视频
-            if result["processed_video_bytes"] and traj_video_placeholder:
+            # 修复：优先字节流，兜底文件路径
+            if result["processed_video_bytes"]:
                 traj_video_placeholder.empty()
                 traj_video_placeholder.video(result["processed_video_bytes"], format="video/mp4")
+            elif result["processed_video_path"] and Path(result["processed_video_path"]).exists():
+                traj_video_placeholder.empty()
+                traj_video_placeholder.video(result["processed_video_path"])
+            else:
+                traj_video_placeholder.error("视频生成失败，但轨迹数据已计算")
             
-            # 下载按钮
-            if result["processed_video_bytes"]:
-                st.markdown("### 📥 视频下载")
+            # 修复：下载按钮兜底（字节流/文件路径双支持）
+            st.markdown("### 📥 视频下载")
+            download_data = result["processed_video_bytes"] if result["processed_video_bytes"] else open(result["processed_video_path"], "rb").read() if result["processed_video_path"] and Path(result["processed_video_path"]).exists() else None
+            
+            if download_data:
                 st.download_button(
                     label="下载带轨迹的检测视频",
-                    data=result["processed_video_bytes"],
+                    data=download_data,
                     file_name=f"traj_video_{model_tracking}_{int(time.time())}.mp4",
                     mime="video/mp4",
                     use_container_width=True
                 )
+            else:
+                st.warning("无法下载视频：视频文件未生成")
             
             # 提示信息
             if result["total_distance"] == 0:
@@ -1078,9 +1156,7 @@ with tab_tracking:
                 st.success(result["message"])
         else:
             # 失败提示
-            if traj_video_placeholder:
-                traj_video_placeholder.empty()
-                traj_video_placeholder.error(f"分析失败：{result['message']}")
+            traj_video_placeholder.error(f"分析失败：{result['message']}")
             st.error(f"分析失败：{result['message']}")
 
 # -------------------------------- 6) 模糊预测 --------------------------------
@@ -1097,3 +1173,4 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
