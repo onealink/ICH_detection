@@ -25,7 +25,7 @@ import time
 if 'language' not in st.session_state:
     st.session_state.language = 'zh'  # 默认中文
 
-# 翻译字典（新增轨迹跟踪相关字段）
+# 翻译字典（新增轨迹跟踪+行为模型相关字段）
 translations = {
     'zh': {
         # 原有翻译保留，新增以下字段
@@ -39,6 +39,8 @@ translations = {
         'video_duration': '视频时长（秒）',
         'total_frames': '总帧数',
         'no_fish_detected': '未检测到金鱼，无法计算轨迹数据',
+        # 新增行为模型翻译
+        '行为': '行为分析模型',
         # 原有翻译
         'page_title': 'YOLO病害检测',
         'header_title': '鱼类寄生虫病检测',
@@ -86,7 +88,6 @@ translations = {
         'fuzzy_pathogen': '病原特征（1~3）',
         'fuzzy_predict': '🧪 预测',
         'fuzzy_result': '风险值: {risk_value}，状态: {risk_status}',
-        '行为': '行为分析模型',
         'Ich': '多子小瓜虫病',
         'Tomont': '包囊',
         'healthy': '健康',
@@ -111,6 +112,8 @@ translations = {
         'video_duration': 'Video Duration (sec)',
         'total_frames': 'Total Frames',
         'no_fish_detected': 'No goldfish detected, cannot calculate trajectory data',
+        # 新增行为模型翻译
+        '行为': 'Behavior Analysis Model',
         # 原有翻译
         'page_title': 'YOLO Disease Detection',
         'header_title': 'Fish Parasitic Disease Detection',
@@ -158,7 +161,6 @@ translations = {
         'fuzzy_pathogen': 'Pathogen Features (1~3)',
         'fuzzy_predict': '🧪 Predict',
         'fuzzy_result': 'Risk Value: {risk_value}, Status: {risk_status}',
-        '行为': 'Behavior Analysis',
         'Ich': 'Ichthyophthirius Disease',
         'Tomont': 'Tomont',
         'healthy': 'Healthy',
@@ -180,15 +182,14 @@ def t(key):
 # ====================== 页面配置 ======================
 st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 
-# ====================== 模型加载 ======================
+# ====================== 模型加载（修复KeyError + 新增行为模型） ======================
 BASE_DIR = Path(__file__).parent
 WEIGHTS = BASE_DIR / "best.pt"  # Ich模型
-TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"  # 新增Tomont模型路径
-# 新增：行为模型路径（guijibest.pt，与best.pt同目录）
-BEHAVIOR_WEIGHTS = BASE_DIR / "guijibest.pt"  # 行为分析模型
+TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"  # Tomont模型
+BEHAVIOR_WEIGHTS = BASE_DIR / "guijibest.pt"  # 行为分析模型（新增）
 IMG_DIR = BASE_DIR / "img"
-# 新增：将行为模型加入路径字典
-MODEL_PATHS = {"Ich": str(WEIGHTS), "Tomont": str(TOMONT_WEIGHTS), "行为": str(BEHAVIOR_WEIGHTS)}  # 移除Lyc，分别对应不同模型
+# 模型路径字典（包含行为模型）
+MODEL_PATHS = {"Ich": str(WEIGHTS), "Tomont": str(TOMONT_WEIGHTS), "行为": str(BEHAVIOR_WEIGHTS)}
 DEFAULT_CONF = 0.6  # 默认置信度
 
 @st.cache_resource
@@ -198,13 +199,23 @@ def load_models():
         if not Path(p).exists():
             st.error(t('model_not_found').format(p=p, k=k))
         else:
-            models[k] = YOLO(p)
-            st.success(t('model_loaded').format(k=k, p=p))
+            try:
+                models[k] = YOLO(p)
+                st.success(t('model_loaded').format(k=k, p=p))
+            except Exception as e:
+                st.error(f"加载模型{k}失败：{str(e)}")
+    # 兜底逻辑：无任何模型加载成功时，尝试加载Ich
+    if not models:
+        if Path(WEIGHTS).exists():
+            models["Ich"] = YOLO(WEIGHTS)
+            st.warning("所有模型加载失败，已兜底加载Ich模型")
+        else:
+            st.error("所有模型文件均不存在，无法运行！")
     return models
 
 MODELS = load_models()
 
-# ====================== 核心工具函数 ======================
+# ====================== 核心工具函数（修复KeyError + 轨迹跟踪优化） ======================
 def detections_to_df(res) -> pd.DataFrame:
     if hasattr(res, "boxes") and hasattr(res, "names"):
         rows = []
@@ -256,6 +267,12 @@ def predict_on_image(img_input, model_key: str, conf: float | None = None):
         raise TypeError(f"Unsupported type: {type(img_input)}")
 
     c = float(conf) if conf is not None else DEFAULT_CONF
+    # 修复KeyError：检查模型是否存在
+    if model_key not in MODELS:
+        st.warning(f"模型{model_key}不存在，已切换为Ich模型")
+        model_key = "Ich" if "Ich" in MODELS else list(MODELS.keys())[0] if MODELS else None
+    if not model_key:
+        raise RuntimeError("无任何可用模型！")
     r = MODELS[model_key].predict(source=pil_img, conf=c, imgsz=640, verbose=False)[0]
     im_bgr = r.plot()
     im_rgb = im_bgr[..., ::-1]
@@ -263,7 +280,7 @@ def predict_on_image(img_input, model_key: str, conf: float | None = None):
     df = detections_to_df(r)
     return vis_pil, df
 
-# 原有视频处理函数（保留，供视频检测标签页使用）
+# 原有视频处理函数（修复KeyError）
 def process_video(video_bytes: bytes, model_key: str, conf: float | None = None, max_frames: int | None = None) -> Path:
     if not CV2_OK:
         raise RuntimeError(t("video_disabled"))
@@ -283,25 +300,22 @@ def process_video(video_bytes: bytes, model_key: str, conf: float | None = None,
         i += 1
         if max_frames and i > max_frames: break
         c = float(conf) if conf is not None else DEFAULT_CONF
+        # 修复KeyError：检查模型是否存在
+        if model_key not in MODELS:
+            st.warning(f"模型{model_key}不存在，已切换为Ich模型")
+            model_key = "Ich" if "Ich" in MODELS else list(MODELS.keys())[0] if MODELS else None
+        if not model_key:
+            raise RuntimeError("无任何可用模型！")
         r = MODELS[model_key].predict(source=frame, conf=c, imgsz=640, verbose=False)[0]
         vw.write(r.plot())
 
     cap.release(); vw.release()
     return out_path
 
-# 新增：轨迹分析核心函数（修改后）
+# 轨迹分析核心函数（优化+修复KeyError）
 def calculate_fish_trajectory(video_bytes: bytes, conf: float = DEFAULT_CONF, max_frames: int = None) -> dict:
     """
-    分析视频中金鱼的运动轨迹（强制使用Ich模型），返回统计结果+带轨迹的视频路径
-    返回值：{
-        "total_distance": 总路程(像素),
-        "average_speed": 平均速度(像素/秒),
-        "video_duration": 视频时长(秒),
-        "total_frames": 总帧数,
-        "processed_video_path": 带轨迹的视频路径,
-        "success": 是否成功,
-        "message": 提示信息
-    }
+    分析视频中金鱼的运动轨迹（优先Ich模型），返回统计结果+带轨迹的视频路径
     """
     if not CV2_OK:
         return {
@@ -315,12 +329,31 @@ def calculate_fish_trajectory(video_bytes: bytes, conf: float = DEFAULT_CONF, ma
         }
     
     # 初始化变量
-    prev_center = None  # 上一帧金鱼中心坐标
-    total_distance = 0.0  # 总路程
-    total_frames = 0  # 总帧数
-    trajectory_points = []  # 轨迹坐标列表（用于绘制）
-    # 定义金鱼类别（排除包囊）
-    fish_categories = {t("healthy"), t("subhealthy"), t("diseased"), "健康", "亚健康", "患病", "Healthy", "Subhealthy", "Diseased"}
+    prev_center = None
+    total_distance = 0.0
+    total_frames = 0
+    trajectory_points = []
+    # 动态匹配模型类别名（优化未检测问题）
+    ich_model_key = "Ich" if "Ich" in MODELS else list(MODELS.keys())[0] if MODELS else None
+    if not ich_model_key:
+        return {
+            "success": False,
+            "message": "无可用模型！",
+            "total_distance": 0,
+            "average_speed": 0,
+            "video_duration": 0,
+            "total_frames": 0,
+            "processed_video_path": ""
+        }
+    ich_model = MODELS[ich_model_key]
+    model_class_names = ich_model.names
+    fish_keywords = ["healthy", "subhealthy", "diseased", "健康", "亚健康", "患病", "金鱼", "fish"]
+    fish_categories = set()
+    for cls_idx, cls_name in model_class_names.items():
+        if any(keyword.lower() in cls_name.lower() for keyword in fish_keywords):
+            fish_categories.add(cls_name)
+            fish_categories.add(t(cls_name))
+    fish_categories.update({"健康", "亚健康", "患病", "Healthy", "Subhealthy", "Diseased"})
     
     # 写入临时视频文件
     in_path = Path("traj_input_tmp.mp4")
@@ -340,12 +373,12 @@ def calculate_fish_trajectory(video_bytes: bytes, conf: float = DEFAULT_CONF, ma
         }
     
     # 获取视频基本信息
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0  # 视频帧率
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    total_frames_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))  # 视频总帧数
+    total_frames_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
-    # 初始化视频写入器（保存带轨迹的视频）
+    # 初始化视频写入器
     processed_video_path = Path(f"traj_processed_{int(time.time())}.mp4")
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     out = cv2.VideoWriter(str(processed_video_path), fourcc, fps, (w, h))
@@ -360,7 +393,6 @@ def calculate_fish_trajectory(video_bytes: bytes, conf: float = DEFAULT_CONF, ma
             break
         total_frames += 1
         
-        # 限制最大帧数（防止超长视频卡顿）
         if max_frames and total_frames > max_frames:
             break
         
@@ -369,9 +401,14 @@ def calculate_fish_trajectory(video_bytes: bytes, conf: float = DEFAULT_CONF, ma
         progress_bar.progress(progress)
         status_text.text(f"{t('tracking_processing')} {total_frames}/{total_frames_total}")
         
-        # 模型推理（强制使用Ich模型）
+        # 模型推理（修复KeyError）
         try:
-            r = MODELS["Ich"].predict(source=frame, conf=conf, imgsz=640, verbose=False)[0]
+            if "Ich" not in MODELS:
+                model_key = list(MODELS.keys())[0]
+                st.warning(f"Ich模型不存在，已切换为{model_key}模型")
+            else:
+                model_key = "Ich"
+            r = MODELS[model_key].predict(source=frame, conf=conf, imgsz=640, verbose=False)[0]
         except Exception as e:
             status_text.empty()
             progress_bar.empty()
@@ -389,46 +426,46 @@ def calculate_fish_trajectory(video_bytes: bytes, conf: float = DEFAULT_CONF, ma
                 "processed_video_path": ""
             }
         
-        # 绘制检测框（保留原检测效果）
+        # 绘制检测框
         frame_with_detect = r.plot()
         
-        # 提取当前帧金鱼的中心坐标（取置信度最高的）
+        # 调试信息：第一帧打印检测类别
+        if total_frames == 1:
+            detected_classes = []
+            if hasattr(r, "boxes") and len(r.boxes) > 0:
+                for box in r.boxes:
+                    cls_idx = int(box.cls.item())
+                    cls_name = r.names.get(cls_idx, f"未知类别_{cls_idx}")
+                    detected_classes.append(cls_name)
+            st.info(f"模型检测到的类别（第一帧）：{detected_classes} | 目标过滤类别：{fish_categories}")
+        
+        # 提取当前帧金鱼中心坐标
         current_center = None
         max_conf = 0.0
         if hasattr(r, "boxes") and len(r.boxes) > 0:
             for box in r.boxes:
                 cls_idx = int(box.cls.item())
                 cls_name = r.names.get(cls_idx, "")
-                # 过滤出金鱼类别
                 if cls_name in fish_categories:
                     conf_score = float(box.conf.item())
                     if conf_score > max_conf:
                         max_conf = conf_score
-                        # 计算检测框中心坐标
-                        xyxy = box.xyxy.cpu().numpy()[0]  # [x1, y1, x2, y2]
+                        xyxy = box.xyxy.cpu().numpy()[0]
                         center_x = int((xyxy[0] + xyxy[2]) / 2)
                         center_y = int((xyxy[1] + xyxy[3]) / 2)
                         current_center = (center_x, center_y)
         
-        # 计算与上一帧的距离 + 记录轨迹点
-        if prev_center is not None and current_center is not None:
-            # 欧氏距离公式：√[(x2-x1)² + (y2-y1)²]
-            distance = math.hypot(current_center[0] - prev_center[0], current_center[1] - prev_center[1])
-            total_distance += distance
-            # 添加轨迹点
-            trajectory_points.append(current_center)
-            # 绘制轨迹连线（红色，线宽2）
-            cv2.line(frame_with_detect, prev_center, current_center, (0, 0, 255), 2)
-        # 绘制当前中心坐标点（蓝色，半径5）
+        # 优化轨迹容错逻辑
         if current_center is not None:
+            if prev_center is not None:
+                distance = math.hypot(current_center[0] - prev_center[0], current_center[1] - prev_center[1])
+                total_distance += distance
+                cv2.line(frame_with_detect, prev_center, current_center, (0, 0, 255), 2)
+            trajectory_points.append(current_center)
             cv2.circle(frame_with_detect, current_center, 5, (255, 0, 0), -1)
-            trajectory_points.append(current_center)
-        
-        # 更新上一帧坐标
-        if current_center is not None:
             prev_center = current_center
         
-        # 写入带轨迹的视频帧
+        # 写入视频帧
         out.write(frame_with_detect)
     
     # 清理资源
@@ -438,15 +475,15 @@ def calculate_fish_trajectory(video_bytes: bytes, conf: float = DEFAULT_CONF, ma
     progress_bar.empty()
     status_text.empty()
     
-    # 计算视频时长和平均速度
+    # 计算统计值
     video_duration = total_frames / fps if fps > 0 else 0
     average_speed = total_distance / video_duration if video_duration > 0 else 0
     
-    # 检测是否有有效轨迹
+    # 优化提示信息
     if total_distance == 0:
         return {
             "success": True,
-            "message": t("no_fish_detected"),
+            "message": f"{t('no_fish_detected')} | 建议：1.降低置信度阈值 2.确认视频中有金鱼 3.检查模型类别是否匹配（当前过滤类别：{fish_categories}）",
             "total_distance": 0,
             "average_speed": 0,
             "video_duration": round(video_duration, 2),
@@ -675,7 +712,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# 侧边栏
+# 侧边栏（修复模型选择KeyError）
 with st.sidebar:
     st.markdown(f"### 🎓 {t('sidebar_university')}")
     st.markdown('<div id="svc-config">', unsafe_allow_html=True)
@@ -683,20 +720,35 @@ with st.sidebar:
     ws_url_override = base_url.replace("http://", "ws://").replace("https://", "wss://")
     st.divider()
     st.header(t('sidebar_model'))
+    # 仅显示已加载的模型
     model_options = {"Ich": t('Ich'), "Tomont": t('Tomont'), "行为": t('行为')}
-    model_value = st.selectbox(t('sidebar_model_type'), options=list(model_options.keys()),
-                           format_func=lambda x: f"{x}（{model_options[x]}）")
-    st.markdown(f"<span class='badge'>{t('sidebar_current_model')} <b>{model_value}</b></span>", unsafe_allow_html=True)
+    available_models = {k: model_options.get(k, k) for k in MODELS.keys()}
+    if not available_models:
+        st.error("无可用模型，请检查模型文件路径！")
+        model_value = None
+    else:
+        default_model = "Ich" if "Ich" in available_models else list(available_models.keys())[0]
+        model_value = st.selectbox(
+            t('sidebar_model_type'), 
+            options=list(available_models.keys()),
+            format_func=lambda x: f"{x}（{available_models[x]}）",
+            index=list(available_models.keys()).index(default_model) if default_model in available_models else 0
+        )
+    # 显示当前模型（容错）
+    if model_value and model_value in MODELS:
+        st.markdown(f"<span class='badge'>{t('sidebar_current_model')} <b>{model_value}</b></span>", unsafe_allow_html=True)
+        st.markdown("<small style='color:#666'>注：轨迹跟踪功能优先使用Ich（多子小瓜虫病）模型</small>", unsafe_allow_html=True)
+    else:
+        st.markdown("<span class='badge' style='color:red'>当前无可用模型</span>", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ========================= 标签页（新增轨迹跟踪标签） =========================
-# 修改标签页定义，加入轨迹跟踪
+# ========================= 标签页 =========================
 tab_img, tab_folder, tab_video, tab_camera, tab_tracking, tab_fuzzy = st.tabs([
     t('tab_image'), 
     t('tab_batch'), 
     t('tab_video'), 
     t('tab_camera'), 
-    t('tab_tracking'),  # 新增：轨迹跟踪标签页
+    t('tab_tracking'),
     t('tab_fuzzy')
 ])
 
@@ -711,7 +763,7 @@ with tab_img:
             st.image(Image.open(img_file), caption=t('image_original'), use_column_width=True)
     with col2:
         st.markdown(f"<div class='card'><b>{t('image_detection')}</b></div>", unsafe_allow_html=True)
-        run_single = st.button(t('image_run'), type="primary", use_container_width=True, disabled=img_file is None)
+        run_single = st.button(t('image_run'), type="primary", use_container_width=True, disabled=img_file is None or model_value is None)
         if run_single and img_file:
             with st.spinner("本地模型推理中..." if st.session_state.language == 'zh' else "Local model inferencing..."):
                 det_img, df = predict_on_image(img_file.getvalue(), model_value)
@@ -741,7 +793,7 @@ with tab_folder:
         accept_multiple_files=True,
         key="multi_imgs",
     )
-    go = st.button(t('batch_run'), type="primary", disabled=not files)
+    go = st.button(t('batch_run'), type="primary", disabled=not files or model_value is None)
     if go and files:
         all_tables: List[pd.DataFrame] = []
         out_imgs: List[Path] = []
@@ -790,7 +842,7 @@ with tab_video:
     vid_file = st.file_uploader(
         t('video_upload'), type=["mp4", "mov", "avi", "mkv"], key="video_file"
     )
-    run_vid = st.button(t('video_run'), type="primary", disabled=(vid_file is None or not CV2_OK))
+    run_vid = st.button(t('video_run'), type="primary", disabled=(vid_file is None or not CV2_OK or model_value is None))
     if not CV2_OK:
         st.warning(t('video_disabled'))
     if run_vid and vid_file:
@@ -823,7 +875,7 @@ with tab_camera:
             st.rerun()
         col_a.button(t('camera_open'), disabled=True)
         snap = st.camera_input(t('camera_shot'), key="cam_shot")
-        go = st.button(t('camera_detect'), type="primary", disabled=(snap is None))
+        go = st.button(t('camera_detect'), type="primary", disabled=(snap is None or model_value is None))
         if go and snap is not None:
             with st.spinner("本地模型推理中..." if st.session_state.language == 'zh' else "Local model inferencing..."):
                 det_img, df = predict_on_image(snap.getvalue(), model_value)
@@ -831,13 +883,14 @@ with tab_camera:
             if not df.empty:
                 st.dataframe(df, use_container_width=True)
 
-# -------------------------- 5) 轨迹跟踪（新增） --------------------------
+# -------------------------- 5) 轨迹跟踪（修复缩进） --------------------------
 with tab_tracking:
     st.markdown(f"#### {t('tracking_title')}")
-    # 新增：明确标注使用Ich模型
-    st.markdown(f"<div class='note'>当前使用模型：Ich（多子小瓜虫病检测模型）</div>", unsafe_allow_html=True)
+    # 标注使用的模型
+    use_model = "Ich" if "Ich" in MODELS else (list(MODELS.keys())[0] if MODELS else "无")
+    st.markdown(f"<div class='note'>当前使用模型：{use_model}（{t(use_model)}）</div>", unsafe_allow_html=True)
     
-    # 视频上传（修复缩进：删除多余的空格/Tab，与外层with同级）
+    # 视频上传
     vid_file = st.file_uploader(
         t('tracking_upload'),
         type=["mp4", "mov", "avi", "mkv"],
@@ -845,22 +898,23 @@ with tab_tracking:
         help="支持常见视频格式，建议时长不超过1分钟以保证分析速度"
     )
     
-    # 展示原始视频（上传后立即显示）
+    # 展示原始视频
     if vid_file:
         st.markdown("### 🎬 原始视频")
         st.video(vid_file)
     
-    # 置信度阈值设置
+    # 置信度阈值（降低默认值）
     conf_threshold = st.slider(
-        "检测置信度阈值",
-        min_value=0.1,
+        "检测置信度阈值（降低以检测更多目标）",
+        min_value=0.05,
         max_value=1.0,
-        value=DEFAULT_CONF,
+        value=0.3,
         step=0.05,
-        key="tracking_conf"
+        key="tracking_conf",
+        help="阈值越低，检测到的目标越多（可能包含误检）"
     )
     
-    # 最大帧数限制（防止超长视频卡顿）
+    # 最大帧数限制
     max_frames = st.number_input(
         "最大分析帧数（0=无限制）",
         min_value=0,
@@ -874,7 +928,7 @@ with tab_tracking:
     run_tracking = st.button(
         t('tracking_run'),
         type="primary",
-        disabled=(vid_file is None or not CV2_OK),
+        disabled=(vid_file is None or not CV2_OK or not MODELS),
         use_container_width=True
     )
     
@@ -882,10 +936,9 @@ with tab_tracking:
     if not CV2_OK:
         st.warning(t('video_disabled'))
     
-    # 执行轨迹分析（修复缩进：原代码此处多了缩进，需对齐）
+    # 执行轨迹分析
     if run_tracking and vid_file and CV2_OK:
         with st.spinner(t('tracking_processing')):
-            # 调用轨迹分析函数（强制使用Ich模型，不再传model_value）
             result = calculate_fish_trajectory(
                 video_bytes=vid_file.getvalue(),
                 conf=conf_threshold,
@@ -930,11 +983,11 @@ with tab_tracking:
                 </div>
                 """, unsafe_allow_html=True)
             
-            # 新增：展示带轨迹的检测视频
+            # 展示带轨迹的检测视频
             if result["processed_video_path"] and Path(result["processed_video_path"]).exists():
                 st.markdown("### 🎬 带轨迹的检测视频")
                 st.video(result["processed_video_path"])
-                # 新增：下载带轨迹视频的按钮
+                # 下载按钮
                 st.download_button(
                     label="下载带轨迹的检测视频",
                     data=open(result["processed_video_path"], "rb").read(),
@@ -967,7 +1020,3 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
-
-
-
-
