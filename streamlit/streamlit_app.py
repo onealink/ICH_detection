@@ -86,6 +86,7 @@ translations = {
         'fuzzy_pathogen': '病原特征（1~3）',
         'fuzzy_predict': '🧪 预测',
         'fuzzy_result': '风险值: {risk_value}，状态: {risk_status}',
+        '行为': '行为分析模型',
         'Ich': '多子小瓜虫病',
         'Tomont': '包囊',
         'healthy': '健康',
@@ -157,6 +158,7 @@ translations = {
         'fuzzy_pathogen': 'Pathogen Features (1~3)',
         'fuzzy_predict': '🧪 Predict',
         'fuzzy_result': 'Risk Value: {risk_value}, Status: {risk_status}',
+        '行为': 'Behavior Analysis',
         'Ich': 'Ichthyophthirius Disease',
         'Tomont': 'Tomont',
         'healthy': 'Healthy',
@@ -182,8 +184,11 @@ st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 BASE_DIR = Path(__file__).parent
 WEIGHTS = BASE_DIR / "best.pt"  # Ich模型
 TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"  # 新增Tomont模型路径
+# 新增：行为模型路径（guijibest.pt，与best.pt同目录）
+BEHAVIOR_WEIGHTS = BASE_DIR / "guijibest.pt"  # 行为分析模型
 IMG_DIR = BASE_DIR / "img"
-MODEL_PATHS = {"Ich": str(WEIGHTS), "Tomont": str(TOMONT_WEIGHTS)}  # 移除Lyc，分别对应不同模型
+# 新增：将行为模型加入路径字典
+MODEL_PATHS = {"Ich": str(WEIGHTS), "Tomont": str(TOMONT_WEIGHTS), "行为": str(BEHAVIOR_WEIGHTS)}  # 移除Lyc，分别对应不同模型
 DEFAULT_CONF = 0.6  # 默认置信度
 
 @st.cache_resource
@@ -678,9 +683,9 @@ with st.sidebar:
     ws_url_override = base_url.replace("http://", "ws://").replace("https://", "wss://")
     st.divider()
     st.header(t('sidebar_model'))
-    model_options = {"Ich": t('Ich'), "Tomont": t('Tomont')}
+    model_options = {"Ich": t('Ich'), "Tomont": t('Tomont'), "行为": t('行为')}
     model_value = st.selectbox(t('sidebar_model_type'), options=list(model_options.keys()),
-                               format_func=lambda x: f"{x}（{model_options[x]}）")
+                           format_func=lambda x: f"{x}（{model_options[x]}）")
     st.markdown(f"<span class='badge'>{t('sidebar_current_model')} <b>{model_value}</b></span>", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -829,8 +834,12 @@ with tab_camera:
 # -------------------------- 5) 轨迹跟踪（新增） --------------------------
 with tab_tracking:
     st.markdown(f"#### {t('tracking_title')}")
-    # 新增：明确标注使用Ich模型
-    st.markdown(f"<div class='note'>当前使用模型：Ich（多子小瓜虫病检测模型）</div>", unsafe_allow_html=True)
+    # 新增：轨迹跟踪模型选择
+    model_tracking = st.selectbox("选择分析模型", options=["Ich", "行为"], format_func=lambda x: t(x))
+    st.markdown(f"<div class='note'>当前使用模型：{t(model_tracking)}（{model_tracking}）</div>", unsafe_allow_html=True)
+
+# 再将推理处改为：
+r = MODELS[model_tracking].predict(source=frame, conf=conf, imgsz=640, verbose=False)[0]
     
     # 视频上传
     vid_file = st.file_uploader(
