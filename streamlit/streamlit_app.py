@@ -359,7 +359,7 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
         if any(keyword.lower() in cls_name.lower() for keyword in fish_keywords):
             fish_categories.add(cls_name)
             fish_categories.add(t(cls_name))
-    fish_categories.update({"健康", "亚健康", "患病", "Healthy", "Subhealthy", "Diseased"})
+    fish_categories.update({"健康", "亚健康", "患病", "health", "Subhealthy", "Diseased"})
     
     # 写入临时视频文件
     in_path = Path("traj_input_tmp.mp4")
@@ -1034,4 +1034,5 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
 
