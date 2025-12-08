@@ -12,15 +12,16 @@ from PIL import Image
 from websocket import create_connection, WebSocket
 from ultralytics import YOLO
 import math  # 新增：用于计算欧氏距离
+
 try:
     import cv2  # noqa: F401
+
     CV2_OK = True
 except Exception:
     CV2_OK = False
 import skfuzzy as fuzz
 from skfuzzy import control as ctrl
 import time
-import os  # 新增：路径/权限检查
 
 # ====================== 语言配置（新增轨迹跟踪翻译） ======================
 if 'language' not in st.session_state:
@@ -176,9 +177,11 @@ translations = {
     }
 }
 
+
 # 获取当前语言翻译
 def t(key):
     return translations[st.session_state.language].get(key, key)
+
 
 # ====================== 页面配置 ======================
 st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
@@ -192,6 +195,7 @@ IMG_DIR = BASE_DIR / "img"
 # 模型路径字典（包含行为模型）
 MODEL_PATHS = {"Ich": str(WEIGHTS), "Tomont": str(TOMONT_WEIGHTS), "行为": str(BEHAVIOR_WEIGHTS)}
 DEFAULT_CONF = 0.6  # 默认置信度
+
 
 @st.cache_resource
 def load_models():
@@ -214,7 +218,9 @@ def load_models():
             st.error("所有模型文件均不存在，无法运行！")
     return models
 
+
 MODELS = load_models()
+
 
 # ====================== 核心工具函数（修复KeyError + 轨迹跟踪优化） ======================
 def detections_to_df(res) -> pd.DataFrame:
@@ -223,7 +229,7 @@ def detections_to_df(res) -> pd.DataFrame:
         names = getattr(res, "names", {}) or {}
         boxes = getattr(res, "boxes", None)
         if boxes is not None and len(boxes) > 0:
-            cls_np  = boxes.cls.detach().cpu().numpy().astype(int)
+            cls_np = boxes.cls.detach().cpu().numpy().astype(int)
             conf_np = boxes.conf.detach().cpu().numpy()
             xyxy_np = boxes.xyxy.detach().cpu().numpy()
             for i in range(len(cls_np)):
@@ -246,6 +252,7 @@ def detections_to_df(res) -> pd.DataFrame:
     if isinstance(res, pd.DataFrame):
         return res
     return pd.DataFrame()
+
 
 def predict_on_image(img_input, model_key: str, conf: float | None = None):
     if isinstance(img_input, (bytes, bytearray)):
@@ -281,98 +288,49 @@ def predict_on_image(img_input, model_key: str, conf: float | None = None):
     df = detections_to_df(r)
     return vis_pil, df
 
-# 修复后的视频处理函数（核心：H.264编码 + 字节流返回）
-def process_video(video_bytes: bytes, model_key: str, conf: float | None = None, max_frames: int | None = None) -> tuple[Path, bytes]:
-    """
-    处理视频并返回：(输出文件路径, 视频字节流)
-    """
+
+# 原有视频处理函数（修复KeyError）
+def process_video(video_bytes: bytes, model_key: str, conf: float | None = None, max_frames: int | None = None) -> Path:
     if not CV2_OK:
         raise RuntimeError(t("video_disabled"))
-    
-    # 临时输入文件（绝对路径）
-    in_path = BASE_DIR / f"input_tmp_{int(time.time())}.mp4"
+    in_path = Path("input_tmp.mp4");
     in_path.write_bytes(video_bytes)
-    
     cap = cv2.VideoCapture(str(in_path))
-    if not cap.isOpened(): 
-        in_path.unlink()
-        raise RuntimeError("无法读取视频")
+    if not cap.isOpened(): raise RuntimeError(
+        "无法读取视频" if st.session_state.language == 'zh' else "Cannot read video")
 
-    # 强制参数为整数（避免编码错误）
-    fps = int(cap.get(cv2.CAP_PROP_FPS)) or 25
-    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    
-    # 输出文件（绝对路径）
-    out_path = BASE_DIR / f"processed_{int(time.time())}.mp4"
-    
-    # 关键修复：多编码兜底 + 调试
-    fourcc_list = ['avc1', 'mp4v', 'x264', 'mpeg']
-    fourcc = None
-    for codec in fourcc_list:
-        try:
-            fourcc = cv2.VideoWriter_fourcc(*codec)
-            break
-        except:
-            continue
-    if fourcc is None:
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # 最终兜底
-    
-    # 强制参数为整数
-    vw = cv2.VideoWriter(str(out_path), fourcc, int(fps), (int(w), int(h)))
-    if not vw.isOpened():
-        cap.release()
-        in_path.unlink()
-        raise RuntimeError(f"视频写入器初始化失败！编码：{codec}，尺寸：{w}x{h}，帧率：{fps}")
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25
+    w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    out_path = Path(f"processed_{int(time.time())}.mp4")
+    vw = cv2.VideoWriter(str(out_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
 
     i = 0
-    frame_written = 0  # 统计写入帧数
     while True:
         ok, frame = cap.read()
         if not ok: break
         i += 1
         if max_frames and i > max_frames: break
-        
         c = float(conf) if conf is not None else DEFAULT_CONF
         # 修复KeyError：检查模型是否存在
         if model_key not in MODELS:
             st.warning(f"模型{model_key}不存在，已切换为Ich模型")
             model_key = "Ich" if "Ich" in MODELS else list(MODELS.keys())[0] if MODELS else None
         if not model_key:
-            cap.release()
-            vw.release()
-            in_path.unlink()
             raise RuntimeError("无任何可用模型！")
-        
         r = MODELS[model_key].predict(source=frame, conf=c, imgsz=640, verbose=False)[0]
-        draw_frame = r.plot()
-        # 强制写入检查
-        if vw.write(draw_frame):
-            frame_written += 1
+        vw.write(r.plot())
 
-    # 释放资源
-    cap.release()
+    cap.release();
     vw.release()
-    in_path.unlink()  # 删除临时输入文件
-    
-    # 调试：检查是否有帧写入
-    if frame_written == 0:
-        out_path.unlink()
-        raise RuntimeError("未成功写入任何视频帧！请检查视频是否可解码")
-    
-    # 读取为字节流（用于预览）
-    try:
-        with open(out_path, "rb") as f:
-            video_bytes = f.read()
-    except:
-        video_bytes = b""  # 兜底
-    
-    return out_path, video_bytes
+    return out_path
 
-# 修复后的轨迹分析函数（核心：H.264编码 + 字节流返回 + 调试）
-def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = DEFAULT_CONF, max_frames: int = None) -> dict:
+
+# 轨迹分析核心函数（支持自定义模型）
+def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = DEFAULT_CONF,
+                              max_frames: int = None) -> dict:
     """
-    分析视频中金鱼的运动轨迹，返回包含字节流的结果
+    分析视频中金鱼的运动轨迹（支持指定模型）
+    :param model_key: 要使用的模型名称
     """
     if not CV2_OK:
         return {
@@ -382,10 +340,9 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
             "average_speed": 0,
             "video_duration": 0,
             "total_frames": 0,
-            "processed_video_path": "",
-            "processed_video_bytes": b""  # 新增：视频字节流
+            "processed_video_path": ""
         }
-    
+
     # 校验模型是否存在
     if model_key not in MODELS:
         st.warning(f"模型{model_key}不存在，已切换为{list(MODELS.keys())[0]}")
@@ -398,18 +355,16 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
             "average_speed": 0,
             "video_duration": 0,
             "total_frames": 0,
-            "processed_video_path": "",
-            "processed_video_bytes": b""
+            "processed_video_path": ""
         }
-    
+
     # 初始化变量
     prev_center = None
     total_distance = 0.0
     total_frames = 0
     trajectory_points = []
-    frame_written = 0  # 统计写入帧数
-    
-    # 动态匹配当前模型的类别名
+
+    # 动态匹配当前模型的类别名（适配不同模型）
     current_model = MODELS[model_key]
     model_class_names = current_model.names
     fish_keywords = ["healthy", "subhealthy", "diseased", "健康", "亚健康", "患病", "金鱼", "fish"]
@@ -418,77 +373,56 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
         if any(keyword.lower() in cls_name.lower() for keyword in fish_keywords):
             fish_categories.add(cls_name)
             fish_categories.add(t(cls_name))
+    # 核心修改：将Healthy替换为health
     fish_categories.update({"健康", "亚健康", "患病", "health", "Subhealthy", "Diseased"})
-    
-    # 临时输入文件（绝对路径）
-    in_path = BASE_DIR / f"traj_input_tmp_{int(time.time())}.mp4"
+
+    # 写入临时视频文件
+    in_path = Path("traj_input_tmp.mp4")
     in_path.write_bytes(video_bytes)
-    
+
     # 打开视频
     cap = cv2.VideoCapture(str(in_path))
     if not cap.isOpened():
-        in_path.unlink()
         return {
             "success": False,
-            "message": "无法读取视频文件",
+            "message": "无法读取视频文件" if st.session_state.language == 'zh' else "Cannot read video file",
             "total_distance": 0,
             "average_speed": 0,
             "video_duration": 0,
             "total_frames": 0,
-            "processed_video_path": "",
-            "processed_video_bytes": b""
+            "processed_video_path": ""
         }
-    
-    # 强制参数为整数
-    fps = int(cap.get(cv2.CAP_PROP_FPS)) or 25.0
+
+    # 获取视频基本信息
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    
-    # 输出视频（绝对路径 + 多编码兜底）
-    processed_video_path = BASE_DIR / f"traj_processed_{int(time.time())}.mp4"
-    fourcc = None
-    for codec in ['avc1', 'mp4v', 'x264']:
-        try:
-            fourcc = cv2.VideoWriter_fourcc(*codec)
-            break
-        except:
-            continue
-    if fourcc is None:
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    
-    out = cv2.VideoWriter(str(processed_video_path), fourcc, int(fps), (int(w), int(h)))
-    if not out.isOpened():
-        cap.release()
-        in_path.unlink()
-        return {
-            "success": False,
-            "message": f"视频写入器初始化失败！尺寸：{w}x{h}，帧率：{fps}",
-            "total_distance": 0,
-            "average_speed": 0,
-            "video_duration": 0,
-            "total_frames": 0,
-            "processed_video_path": "",
-            "processed_video_bytes": b""
-        }
-    
-    # 进度条
+
+    # 初始化视频写入器
+    processed_video_path = Path(f"traj_processed_{int(time.time())}.mp4")
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    out = cv2.VideoWriter(str(processed_video_path), fourcc, fps, (w, h))
+
+    # 逐帧处理
     progress_bar = st.progress(0)
     status_text = st.empty()
-    
+
     while True:
         ret, frame = cap.read()
-        if not ret: break
+        if not ret:
+            break
         total_frames += 1
-        
-        if max_frames and total_frames > max_frames: break
-        
+
+        if max_frames and total_frames > max_frames:
+            break
+
         # 更新进度
         progress = min(total_frames / total_frames_total, 1.0)
         progress_bar.progress(progress)
         status_text.text(f"{t('tracking_processing')} {total_frames}/{total_frames_total}")
-        
-        # 模型推理
+
+        # 模型推理（使用指定的模型）
         try:
             r = MODELS[model_key].predict(source=frame, conf=conf, imgsz=640, verbose=False)[0]
         except Exception as e:
@@ -505,13 +439,22 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
                 "average_speed": 0,
                 "video_duration": 0,
                 "total_frames": total_frames,
-                "processed_video_path": "",
-                "processed_video_bytes": b""
+                "processed_video_path": ""
             }
-        
+
         # 绘制检测框
         frame_with_detect = r.plot()
-        
+
+        # 调试信息：第一帧打印检测类别
+        if total_frames == 1:
+            detected_classes = []
+            if hasattr(r, "boxes") and len(r.boxes) > 0:
+                for box in r.boxes:
+                    cls_idx = int(box.cls.item())
+                    cls_name = r.names.get(cls_idx, f"未知类别_{cls_idx}")
+                    detected_classes.append(cls_name)
+            st.info(f"模型[{model_key}]检测到的类别（第一帧）：{detected_classes} | 目标过滤类别：{fish_categories}")
+
         # 提取当前帧金鱼中心坐标
         current_center = None
         max_conf = 0.0
@@ -527,8 +470,8 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
                         center_x = int((xyxy[0] + xyxy[2]) / 2)
                         center_y = int((xyxy[1] + xyxy[3]) / 2)
                         current_center = (center_x, center_y)
-        
-        # 计算轨迹距离
+
+        # 优化轨迹容错逻辑
         if current_center is not None:
             if prev_center is not None:
                 distance = math.hypot(current_center[0] - prev_center[0], current_center[1] - prev_center[1])
@@ -537,68 +480,43 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
             trajectory_points.append(current_center)
             cv2.circle(frame_with_detect, current_center, 5, (255, 0, 0), -1)
             prev_center = current_center
-        
-        # 强制写入并计数
-        if out.write(frame_with_detect):
-            frame_written += 1
-    
+
+        # 写入视频帧
+        out.write(frame_with_detect)
+
     # 清理资源
     cap.release()
     out.release()
     in_path.unlink(missing_ok=True)
     progress_bar.empty()
     status_text.empty()
-    
-    # 检查是否有帧写入
-    if frame_written == 0:
-        processed_video_path.unlink(missing_ok=True)
-        return {
-            "success": True,
-            "message": f"{t('no_fish_detected')} | 未写入任何视频帧",
-            "total_distance": 0,
-            "average_speed": 0,
-            "video_duration": 0,
-            "total_frames": total_frames,
-            "processed_video_path": "",
-            "processed_video_bytes": b""
-        }
-    
-    # 读取视频字节流（兜底：文件路径优先）
-    video_bytes = b""
-    if processed_video_path.exists():
-        try:
-            with open(processed_video_path, "rb") as f:
-                video_bytes = f.read()
-        except:
-            pass
-    
+
     # 计算统计值
     video_duration = total_frames / fps if fps > 0 else 0
     average_speed = total_distance / video_duration if video_duration > 0 else 0
-    
-    # 返回结果（包含字节流）
+
+    # 优化提示信息
     if total_distance == 0:
         return {
             "success": True,
-            "message": f"{t('no_fish_detected')} | 模型：{model_key} | 建议：1.降低置信度阈值 2.确认视频中有金鱼 3.检查模型类别是否匹配",
+            "message": f"{t('no_fish_detected')} | 模型：{model_key} | 建议：1.降低置信度阈值 2.确认视频中有金鱼 3.检查模型类别是否匹配（当前过滤类别：{fish_categories}）",
             "total_distance": 0,
             "average_speed": 0,
             "video_duration": round(video_duration, 2),
             "total_frames": total_frames,
-            "processed_video_path": str(processed_video_path) if processed_video_path.exists() else "",
-            "processed_video_bytes": video_bytes
+            "processed_video_path": str(processed_video_path) if processed_video_path.exists() else ""
         }
-    
+
     return {
         "success": True,
-        "message": f"轨迹分析完成（使用模型：{model_key}），共写入{frame_written}帧",
+        "message": f"轨迹分析完成（使用模型：{model_key}）",
         "total_distance": round(total_distance, 2),
         "average_speed": round(average_speed, 2),
         "video_duration": round(video_duration, 2),
         "total_frames": total_frames,
-        "processed_video_path": str(processed_video_path) if processed_video_path.exists() else "",
-        "processed_video_bytes": video_bytes
+        "processed_video_path": str(processed_video_path) if processed_video_path.exists() else ""
     }
+
 
 def save_table_to_excel(df: pd.DataFrame, filename: str) -> Path:
     out = Path(filename).with_suffix(".xlsx")
@@ -606,11 +524,13 @@ def save_table_to_excel(df: pd.DataFrame, filename: str) -> Path:
         df.to_excel(w, sheet_name="detections" if st.session_state.language == 'zh' else "Detections", index=False)
     return out
 
+
 def zip_files(files: list[Path], out_zip: Path) -> Path:
     with zipfile.ZipFile(out_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for f in files:
             if f.exists(): zf.write(f, arcname=f.name)
     return out_zip
+
 
 # ========= 模糊预测 =========
 @st.cache_resource
@@ -662,9 +582,11 @@ def build_fuzzy_sim():
         ctrl.Rule(day['diseased'] & night['diseased'] & surf['diseased'] & patho['present'], risk['diseased']),
     ]
     for r in rules: r.weight = 1.0
-    rules[4].weight = 2; rules[5].weight = 2
+    rules[4].weight = 2;
+    rules[5].weight = 2
 
     return ctrl.ControlSystemSimulation(ctrl.ControlSystem(rules))
+
 
 def fuzzy_predict(day_val: float, night_val: float, surf_val: float, patho_val: float) -> dict:
     sim = build_fuzzy_sim()
@@ -679,6 +601,7 @@ def fuzzy_predict(day_val: float, night_val: float, surf_val: float, patho_val: 
     else:
         status = t("healthy") if v < 1.5 else (t("subhealthy") if v < 2.5 else t("diseased"))
     return {"risk_value": round(v, 1), "risk_status": status}
+
 
 # ========================= 全局样式 =========================
 st.markdown("""
@@ -828,14 +751,15 @@ with st.sidebar:
     else:
         default_model = "Ich" if "Ich" in available_models else list(available_models.keys())[0]
         model_value = st.selectbox(
-            t('sidebar_model_type'), 
+            t('sidebar_model_type'),
             options=list(available_models.keys()),
             format_func=lambda x: f"{x}（{available_models[x]}）",
             index=list(available_models.keys()).index(default_model) if default_model in available_models else 0
         )
     # 显示当前模型（容错）
     if model_value and model_value in MODELS:
-        st.markdown(f"<span class='badge'>{t('sidebar_current_model')} <b>{model_value}</b></span>", unsafe_allow_html=True)
+        st.markdown(f"<span class='badge'>{t('sidebar_current_model')} <b>{model_value}</b></span>",
+                    unsafe_allow_html=True)
         st.markdown("<small style='color:#666'>注：轨迹跟踪功能可独立选择模型</small>", unsafe_allow_html=True)
     else:
         st.markdown("<span class='badge' style='color:red'>当前无可用模型</span>", unsafe_allow_html=True)
@@ -843,10 +767,10 @@ with st.sidebar:
 
 # ========================= 标签页 =========================
 tab_img, tab_folder, tab_video, tab_camera, tab_tracking, tab_fuzzy = st.tabs([
-    t('tab_image'), 
-    t('tab_batch'), 
-    t('tab_video'), 
-    t('tab_camera'), 
+    t('tab_image'),
+    t('tab_batch'),
+    t('tab_video'),
+    t('tab_camera'),
     t('tab_tracking'),
     t('tab_fuzzy')
 ])
@@ -857,12 +781,14 @@ with tab_img:
     col1, col2 = st.columns(2)
     with col1:
         st.markdown(f"<div class='card'><b>{t('image_original')}</b></div>", unsafe_allow_html=True)
-        img_file = st.file_uploader(t('image_upload'), type=["jpg","jpeg","png","bmp","webp"], key="single_img_main")
+        img_file = st.file_uploader(t('image_upload'), type=["jpg", "jpeg", "png", "bmp", "webp"],
+                                    key="single_img_main")
         if img_file:
             st.image(Image.open(img_file), caption=t('image_original'), use_column_width=True)
     with col2:
         st.markdown(f"<div class='card'><b>{t('image_detection')}</b></div>", unsafe_allow_html=True)
-        run_single = st.button(t('image_run'), type="primary", use_container_width=True, disabled=img_file is None or model_value is None)
+        run_single = st.button(t('image_run'), type="primary", use_container_width=True,
+                               disabled=img_file is None or model_value is None)
         if run_single and img_file:
             with st.spinner("本地模型推理中..." if st.session_state.language == 'zh' else "Local model inferencing..."):
                 det_img, df = predict_on_image(img_file.getvalue(), model_value)
@@ -880,7 +806,8 @@ with tab_img:
                     if st.button(t('image_download_img'), use_container_width=True):
                         bio = io.BytesIO();
                         det_img.save(bio, format="JPEG")
-                        st.download_button(t('image_download_img'), data=bio.getvalue(), file_name="image_detect_result.jpg",
+                        st.download_button(t('image_download_img'), data=bio.getvalue(),
+                                           file_name="image_detect_result.jpg",
                                            mime="image/jpeg")
 
 # ----------------------------- 2) 批量图片检测 -----------------------------
@@ -935,46 +862,27 @@ with tab_folder:
         status.empty()
         progress.empty()
 
-# -------------------------------- 3) 视频检测（修复预览） --------------------------------
+# -------------------------------- 3) 视频检测 --------------------------------
 with tab_video:
     st.markdown(f"#### {t('tab_video')}")
     vid_file = st.file_uploader(
         t('video_upload'), type=["mp4", "mov", "avi", "mkv"], key="video_file"
     )
-    run_vid = st.button(t('video_run'), type="primary", disabled=(vid_file is None or not CV2_OK or model_value is None))
-    
+    run_vid = st.button(t('video_run'), type="primary",
+                        disabled=(vid_file is None or not CV2_OK or model_value is None))
     if not CV2_OK:
         st.warning(t('video_disabled'))
-    
     if run_vid and vid_file:
-        try:
-            with st.spinner(t('video_processing')):
-                # 调用修复后的函数，获取路径+字节流
-                out_path, video_bytes = process_video(vid_file.getvalue(), model_value, max_frames=None)
-            
-            # 核心修复：优先字节流，兜底文件路径
-            st.markdown("### 🎬 处理后的视频")
-            if video_bytes:
-                st.video(video_bytes, format="video/mp4")
-            elif out_path.exists():
-                st.video(str(out_path))
-            else:
-                st.error("视频预览失败，但文件已生成")
-            
-            # 下载按钮（兜底）
-            download_data = video_bytes if video_bytes else open(out_path, "rb").read() if out_path.exists() else None
-            if download_data:
-                st.download_button(
-                    t('video_download'),
-                    data=download_data,  # 使用字节流下载
-                    file_name=out_path.name,
-                    mime="video/mp4",
-                    use_container_width=True
-                )
-            else:
-                st.warning("无法下载视频：文件损坏")
-        except Exception as e:
-            st.error(f"视频处理失败：{str(e)}")
+        with st.spinner(t('video_processing')):
+            out_path = process_video(vid_file.getvalue(), model_value, max_frames=None)
+        st.video(str(out_path))
+        st.download_button(
+            t('video_download'),
+            data=open(out_path, "rb").read(),
+            file_name=out_path.name,
+            mime="video/mp4",
+        )
+
 # -------------------------- 4) 摄像头检测 --------------------------
 with tab_camera:
     st.markdown(f"#### {t('camera_title')}")
@@ -1002,11 +910,11 @@ with tab_camera:
             if not df.empty:
                 st.dataframe(df, use_container_width=True)
 
-# -------------------------- 5) 轨迹跟踪（修复视频预览） --------------------------
+# -------------------------- 5) 轨迹跟踪（支持模型切换） --------------------------
 with tab_tracking:
     st.markdown(f"#### {t('tracking_title')}")
-    
-    # 轨迹跟踪专属模型选择
+
+    # 新增：轨迹跟踪专属模型选择
     if MODELS:
         model_tracking_options = {k: t(k) for k in MODELS.keys()}
         model_tracking = st.selectbox(
@@ -1016,34 +924,25 @@ with tab_tracking:
             index=0 if "Ich" in model_tracking_options else 0,
             key="tracking_model"
         )
-        st.markdown(f"<div class='note'>当前使用模型：{model_tracking}（{model_tracking_options[model_tracking]}）</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='note'>当前使用模型：{model_tracking}（{model_tracking_options[model_tracking]}）</div>",
+                    unsafe_allow_html=True)
     else:
         st.error("无可用模型，请先检查模型文件！")
         model_tracking = None
-    
-    # 初始化视频预览占位符（关键：提前初始化，避免分支问题）
-    st.markdown("### 🎬 视频预览")
-    col_origin, col_traj = st.columns(2)
-    traj_video_placeholder = col_traj.empty()  # 提前初始化
-    
-    with col_origin:
-        st.markdown("#### 原始视频")
-        # 视频上传
-        vid_file = st.file_uploader(
-            t('tracking_upload'),
-            type=["mp4", "mov", "avi", "mkv"],
-            key="tracking_video_file",
-            help="支持常见视频格式，建议时长不超过1分钟以保证分析速度"
-        )
-        if vid_file:
-            st.video(vid_file)
-        else:
-            st.info("请先上传视频文件")
-    
-    with col_traj:
-        st.markdown("#### 带轨迹的视频（分析后显示）")
-        traj_video_placeholder.info("点击“开始轨迹分析”后，此处将显示带轨迹的视频")
-    
+
+    # 视频上传
+    vid_file = st.file_uploader(
+        t('tracking_upload'),
+        type=["mp4", "mov", "avi", "mkv"],
+        key="tracking_video_file",
+        help="支持常见视频格式，建议时长不超过1分钟以保证分析速度"
+    )
+
+    # 展示原始视频
+    if vid_file:
+        st.markdown("### 🎬 原始视频")
+        st.video(vid_file)
+
     # 置信度阈值（降低默认值）
     conf_threshold = st.slider(
         "检测置信度阈值（降低以检测更多目标）",
@@ -1051,9 +950,10 @@ with tab_tracking:
         max_value=1.0,
         value=0.3,
         step=0.05,
-        key="tracking_conf"
+        key="tracking_conf",
+        help="阈值越低，检测到的目标越多（可能包含误检）"
     )
-    
+
     # 最大帧数限制
     max_frames = st.number_input(
         "最大分析帧数（0=无限制）",
@@ -1063,7 +963,7 @@ with tab_tracking:
         step=100,
         key="tracking_max_frames"
     )
-    
+
     # 开始分析按钮
     run_tracking = st.button(
         t('tracking_run'),
@@ -1071,27 +971,27 @@ with tab_tracking:
         disabled=(vid_file is None or not CV2_OK or not model_tracking),
         use_container_width=True
     )
-    
+
     # CV2未加载提示
     if not CV2_OK:
         st.warning(t('video_disabled'))
-    
-    # 执行轨迹分析
+
+    # 执行轨迹分析（传入选择的模型）
     if run_tracking and vid_file and CV2_OK and model_tracking:
         with st.spinner(t('tracking_processing')):
             result = calculate_fish_trajectory(
                 video_bytes=vid_file.getvalue(),
-                model_key=model_tracking,
+                model_key=model_tracking,  # 传入选择的模型
                 conf=conf_threshold,
                 max_frames=max_frames if max_frames > 0 else None
             )
-        
+
         # 展示结果
         st.markdown("### 📊 分析结果")
         if result["success"]:
-            # 轨迹数据卡片
+            # 成功结果展示
             col1, col2, col3, col4 = st.columns(4)
-            
+
             with col1:
                 st.markdown(f"""
                 <div class="traj-card">
@@ -1099,7 +999,7 @@ with tab_tracking:
                     <p class="traj-metric">{result['total_distance']}</p>
                 </div>
                 """, unsafe_allow_html=True)
-            
+
             with col2:
                 st.markdown(f"""
                 <div class="traj-card">
@@ -1107,7 +1007,7 @@ with tab_tracking:
                     <p class="traj-metric">{result['average_speed']}</p>
                 </div>
                 """, unsafe_allow_html=True)
-            
+
             with col3:
                 st.markdown(f"""
                 <div class="traj-card">
@@ -1115,7 +1015,7 @@ with tab_tracking:
                     <p class="traj-metric">{result['video_duration']}</p>
                 </div>
                 """, unsafe_allow_html=True)
-            
+
             with col4:
                 st.markdown(f"""
                 <div class="traj-card">
@@ -1123,40 +1023,28 @@ with tab_tracking:
                     <p class="traj-metric">{result['total_frames']}</p>
                 </div>
                 """, unsafe_allow_html=True)
-            
-            # 修复：优先字节流，兜底文件路径
-            if result["processed_video_bytes"]:
-                traj_video_placeholder.empty()
-                traj_video_placeholder.video(result["processed_video_bytes"], format="video/mp4")
-            elif result["processed_video_path"] and Path(result["processed_video_path"]).exists():
-                traj_video_placeholder.empty()
-                traj_video_placeholder.video(result["processed_video_path"])
-            else:
-                traj_video_placeholder.error("视频生成失败，但轨迹数据已计算")
-            
-            # 修复：下载按钮兜底（字节流/文件路径双支持）
-            st.markdown("### 📥 视频下载")
-            download_data = result["processed_video_bytes"] if result["processed_video_bytes"] else open(result["processed_video_path"], "rb").read() if result["processed_video_path"] and Path(result["processed_video_path"]).exists() else None
-            
-            if download_data:
+
+            # 展示带轨迹的检测视频
+            if result["processed_video_path"] and Path(result["processed_video_path"]).exists():
+                st.markdown("### 🎬 带轨迹的检测视频")
+                st.video(result["processed_video_path"])
+                # 下载按钮（文件名包含模型名）
                 st.download_button(
                     label="下载带轨迹的检测视频",
-                    data=download_data,
+                    data=open(result["processed_video_path"], "rb").read(),
                     file_name=f"traj_video_{model_tracking}_{int(time.time())}.mp4",
                     mime="video/mp4",
                     use_container_width=True
                 )
-            else:
-                st.warning("无法下载视频：视频文件未生成")
-            
+
             # 提示信息
             if result["total_distance"] == 0:
                 st.info(result["message"])
             else:
                 st.success(result["message"])
+
         else:
             # 失败提示
-            traj_video_placeholder.error(f"分析失败：{result['message']}")
             st.error(f"分析失败：{result['message']}")
 
 # -------------------------------- 6) 模糊预测 --------------------------------
@@ -1165,11 +1053,11 @@ with tab_fuzzy:
     st.markdown(f"<div class='card'><b>{t('fuzzy_input')}</b></div>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
-        day_behavior   = st.number_input(t('fuzzy_day'),  min_value=1.0, max_value=3.0, value=3.0, step=1.0)
-        night_behavior = st.number_input(t('fuzzy_night'),  min_value=1.0, max_value=3.0, value=1.0, step=1.0)
+        day_behavior = st.number_input(t('fuzzy_day'), min_value=1.0, max_value=3.0, value=3.0, step=1.0)
+        night_behavior = st.number_input(t('fuzzy_night'), min_value=1.0, max_value=3.0, value=1.0, step=1.0)
     with c2:
         surface_features = st.number_input(t('fuzzy_surface'), min_value=1.0, max_value=3.0, value=3.0, step=1.0)
-        pathogen         = st.number_input(t('fuzzy_pathogen'), min_value=1.0, max_value=3.0, value=3.0, step=1.0)
+        pathogen = st.number_input(t('fuzzy_pathogen'), min_value=1.0, max_value=3.0, value=3.0, step=1.0)
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
