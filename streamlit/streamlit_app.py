@@ -11,24 +11,24 @@ import requests
 from PIL import Image
 from websocket import create_connection, WebSocket
 from ultralytics import YOLO
-import math
+import math  # 新增：用于计算欧氏距离
 try:
-    import cv2
+    import cv2  # noqa: F401
     CV2_OK = True
 except Exception:
     CV2_OK = False
 import skfuzzy as fuzz
 from skfuzzy import control as ctrl
 import time
-import os
 
-# ====================== 基础配置 ======================
+# ====================== 语言配置（新增轨迹跟踪翻译） ======================
 if 'language' not in st.session_state:
-    st.session_state.language = 'zh'
+    st.session_state.language = 'zh'  # 默认中文
 
-# 翻译字典
+# 翻译字典（新增轨迹跟踪+行为模型相关字段）
 translations = {
     'zh': {
+        # 原有翻译保留，新增以下字段
         'tab_tracking': '📍 轨迹跟踪',
         'tracking_title': '金鱼运动轨迹分析',
         'tracking_upload': '上传视频文件',
@@ -39,7 +39,9 @@ translations = {
         'video_duration': '视频时长（秒）',
         'total_frames': '总帧数',
         'no_fish_detected': '未检测到金鱼，无法计算轨迹数据',
+        # 新增行为模型翻译
         '行为': '行为分析模型',
+        # 原有翻译
         'page_title': 'YOLO病害检测',
         'header_title': '鱼类寄生虫病检测',
         'header_subtitle': '图片 / 批量 / 视频 / 摄像头 / 轨迹跟踪 / 模糊预测 — 一站式检测台',
@@ -68,16 +70,16 @@ translations = {
         'batch_download_zip': '🗜️ 打包下载 标注图片ZIP',
         'video_upload': '上传视频',
         'video_run': '🚀 开始视频检测',
-        'video_disabled': '当前环境未加载 OpenCV，视频功能禁用',
-        'video_processing': '视频处理中...',
+        'video_disabled': '当前云端环境未能加载 OpenCV（cv2），视频处理功能已禁用。请在本地运行或安装支持的 OpenCV 版本。',
+        'video_processing': '本地视频处理...（按 CPU 速度可能较慢）',
         'video_download': '下载处理后视频',
-        'camera_title': '📷 摄像头检测',
-        'camera_caption': '点击打开/关闭摄像头',
+        'camera_title': '📷 摄像头检测（拍照版）',
+        'camera_caption': '点击“打开摄像头”后才渲染拍照控件；点击“关闭摄像头”停止并隐藏。',
         'camera_open': '🎬 打开摄像头',
         'camera_close': '⏹ 关闭摄像头',
-        'camera_not_started': '摄像头未开启',
-        'camera_shot': '拍照',
-        'camera_detect': '检测',
+        'camera_not_started': '摄像头未开启。点击“打开摄像头”开始拍照。',
+        'camera_shot': '点击下方按钮拍一张',
+        'camera_detect': '检测此照片',
         'fuzzy_title': '🧮 模糊预测',
         'fuzzy_input': '输入指标参数',
         'fuzzy_day': '日间行为（1~3）',
@@ -99,64 +101,67 @@ translations = {
         'model_loaded': '成功加载模型：{k} -> {p}'
     },
     'en': {
+        # 原有翻译保留，新增以下字段
         'tab_tracking': '📍 Trajectory Tracking',
         'tracking_title': 'Goldfish Motion Trajectory Analysis',
         'tracking_upload': 'Upload Video File',
         'tracking_run': '🚀 Start Trajectory Analysis',
-        'tracking_processing': 'Analyzing trajectory...',
+        'tracking_processing': 'Analyzing video trajectory...',
         'total_distance': 'Total Distance (pixels)',
-        'average_speed': 'Average Speed (pixels/sec)',
+        'average_speed': 'Average Movement Speed (pixels/sec)',
         'video_duration': 'Video Duration (sec)',
         'total_frames': 'Total Frames',
-        'no_fish_detected': 'No goldfish detected',
+        'no_fish_detected': 'No goldfish detected, cannot calculate trajectory data',
+        # 新增行为模型翻译
         '行为': 'Behavior Analysis Model',
+        # 原有翻译
         'page_title': 'YOLO Disease Detection',
         'header_title': 'Fish Parasitic Disease Detection',
-        'header_subtitle': 'Image/Batch/Video/Camera/Trajectory/Fuzzy Prediction',
-        'sidebar_university': 'Ningbo University · Lab',
-        'sidebar_model': '🧠 Model & Params',
+        'header_subtitle': 'Image / Batch / Video / Camera / Trajectory Tracking / Fuzzy Prediction — One-stop Detection Platform',
+        'sidebar_university': 'Ningbo University · Disease Laboratory',
+        'sidebar_model': '🧠 Model & Parameters',
         'sidebar_model_type': 'Model Type',
         'sidebar_current_model': 'Current Model:',
         'tab_image': '🖼️ Image Detection',
-        'tab_batch': '🗂️ Batch Detection',
+        'tab_batch': '🗂️ Batch Images',
         'tab_video': '🎞️ Video Detection',
         'tab_camera': '📷 Camera Detection',
         'tab_fuzzy': '🧮 Fuzzy Prediction',
         'image_original': 'Original Image',
-        'image_detection': 'Detection Result',
+        'image_detection': 'Detection & Results',
         'image_upload': 'Upload Image',
         'image_run': '🚀 Start Detection',
-        'image_result': 'Result',
-        'image_download_excel': 'Download Excel',
+        'image_result': 'Detection Result',
+        'image_download_excel': 'Download Excel (Detection Table)',
         'image_download_img': 'Download Annotated Image',
-        'batch_upload': 'Upload Multiple Images',
+        'batch_upload': 'Select Multiple Images',
         'batch_run': '🚀 Start Batch Detection',
-        'batch_processing': 'Processing:',
-        'batch_total': 'Total:',
-        'batch_no_results': 'No targets detected',
-        'batch_download_excel': '📥 Download Excel',
-        'batch_download_zip': '🗜️ Download Images ZIP',
+        'batch_processing': 'Processing: ',
+        'batch_total': 'Total: ',
+        'batch_no_results': 'No targets detected.',
+        'batch_download_excel': '📥 Download Excel (Batch Detection)',
+        'batch_download_zip': '🗜️ Download Annotated Images (ZIP)',
         'video_upload': 'Upload Video',
         'video_run': '🚀 Start Video Detection',
-        'video_disabled': 'OpenCV not loaded, video disabled',
-        'video_processing': 'Processing video...',
+        'video_disabled': 'OpenCV (cv2) not loaded in current cloud environment. Video processing disabled. Please run locally or install supported OpenCV version.',
+        'video_processing': 'Local video processing... (May be slow depending on CPU)',
         'video_download': 'Download Processed Video',
-        'camera_title': '📷 Camera Detection',
-        'camera_caption': 'Click to open/close camera',
+        'camera_title': '📷 Camera Detection (Photo Mode)',
+        'camera_caption': 'Camera widget loads only after clicking "Open Camera"; click "Close Camera" to stop and hide.',
         'camera_open': '🎬 Open Camera',
         'camera_close': '⏹ Close Camera',
-        'camera_not_started': 'Camera not started',
-        'camera_shot': 'Take Photo',
-        'camera_detect': 'Detect',
+        'camera_not_started': 'Camera not started. Click "Open Camera" to begin.',
+        'camera_shot': 'Click button below to take photo',
+        'camera_detect': 'Detect This Photo',
         'fuzzy_title': '🧮 Fuzzy Prediction',
-        'fuzzy_input': 'Input Parameters',
+        'fuzzy_input': 'Input Indicator Parameters',
         'fuzzy_day': 'Day Behavior (1~3)',
         'fuzzy_night': 'Night Behavior (1~3)',
-        'fuzzy_surface': 'Surface Feature (1~3)',
-        'fuzzy_pathogen': 'Pathogen Feature (1~3)',
+        'fuzzy_surface': 'Surface Features (1~3)',
+        'fuzzy_pathogen': 'Pathogen Features (1~3)',
         'fuzzy_predict': '🧪 Predict',
         'fuzzy_result': 'Risk Value: {risk_value}, Status: {risk_status}',
-        'Ich': 'Ichthyophthirius',
+        'Ich': 'Ichthyophthirius Disease',
         'Tomont': 'Tomont',
         'healthy': 'Healthy',
         'subhealthy': 'Subhealthy',
@@ -165,195 +170,187 @@ translations = {
         'confidence': 'Confidence',
         'location': 'Location',
         'path': 'Path',
-        'model_not_found': 'Model not found: {p} ({k} model)',
-        'model_loaded': 'Loaded model: {k} -> {p}'
+        'model_not_found': 'Model file not found: {p} ({k} model)',
+        'model_loaded': 'Successfully loaded model: {k} -> {p}'
     }
 }
 
+# 获取当前语言翻译
 def t(key):
     return translations[st.session_state.language].get(key, key)
 
+# ====================== 页面配置 ======================
 st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 
-# ====================== 模型加载 ======================
+# ====================== 模型加载（修复KeyError + 新增行为模型） ======================
 BASE_DIR = Path(__file__).parent
-MODEL_PATHS = {
-    "Ich": BASE_DIR / "best.pt",
-    "Tomont": BASE_DIR / "tomont.best.pt",
-    "行为": BASE_DIR / "guijibest.pt"
-}
-DEFAULT_CONF = 0.6
+WEIGHTS = BASE_DIR / "best.pt"  # Ich模型
+TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"  # Tomont模型
+BEHAVIOR_WEIGHTS = BASE_DIR / "guijibest.pt"  # 行为分析模型（新增）
+IMG_DIR = BASE_DIR / "img"
+# 模型路径字典（包含行为模型）
+MODEL_PATHS = {"Ich": str(WEIGHTS), "Tomont": str(TOMONT_WEIGHTS), "行为": str(BEHAVIOR_WEIGHTS)}
+DEFAULT_CONF = 0.6  # 默认置信度
 
 @st.cache_resource
 def load_models():
     models = {}
     for k, p in MODEL_PATHS.items():
-        if p.exists():
+        if not Path(p).exists():
+            st.error(t('model_not_found').format(p=p, k=k))
+        else:
             try:
-                models[k] = YOLO(str(p))
-                st.success(t('model_loaded').format(k=k, p=str(p)))
+                models[k] = YOLO(p)
+                st.success(t('model_loaded').format(k=k, p=p))
             except Exception as e:
                 st.error(f"加载模型{k}失败：{str(e)}")
+    # 兜底逻辑：无任何模型加载成功时，尝试加载Ich
+    if not models:
+        if Path(WEIGHTS).exists():
+            models["Ich"] = YOLO(WEIGHTS)
+            st.warning("所有模型加载失败，已兜底加载Ich模型")
         else:
-            st.error(t('model_not_found').format(k=k, p=str(p)))
-    if not models and MODEL_PATHS["Ich"].exists():
-        models["Ich"] = YOLO(str(MODEL_PATHS["Ich"]))
-        st.warning("仅加载Ich模型作为兜底")
+            st.error("所有模型文件均不存在，无法运行！")
     return models
 
 MODELS = load_models()
 
-# ====================== 工具函数 ======================
-def detections_to_df(res):
+# ====================== 核心工具函数（修复KeyError + 轨迹跟踪优化） ======================
+def detections_to_df(res) -> pd.DataFrame:
     if hasattr(res, "boxes") and hasattr(res, "names"):
         rows = []
-        for box in res.boxes:
-            cls = int(box.cls.item())
+        names = getattr(res, "names", {}) or {}
+        boxes = getattr(res, "boxes", None)
+        if boxes is not None and len(boxes) > 0:
+            cls_np  = boxes.cls.detach().cpu().numpy().astype(int)
+            conf_np = boxes.conf.detach().cpu().numpy()
+            xyxy_np = boxes.xyxy.detach().cpu().numpy()
+            for i in range(len(cls_np)):
+                rows.append({
+                    t("category"): names.get(int(cls_np[i]), str(int(cls_np[i]))),
+                    t("confidence"): float(conf_np[i]),
+                    t("location"): [float(x) for x in xyxy_np[i].tolist()],
+                })
+        return pd.DataFrame(rows)
+    if isinstance(res, list):
+        rows = []
+        for d in res or []:
             rows.append({
-                t("category"): res.names.get(cls, str(cls)),
-                t("confidence"): float(box.conf.item()),
-                t("location"): [float(x) for x in box.xyxy.cpu().numpy()[0]]
+                t("category"): d.get("category") or d.get("class_name") or d.get("name") or d.get("cls"),
+                t("confidence"): d.get("conf") or d.get("confidence"),
+                t("location"): d.get("location") or d.get("bbox") or d.get("xyxy"),
+                t("path"): d.get("path"),
             })
         return pd.DataFrame(rows)
+    if isinstance(res, pd.DataFrame):
+        return res
     return pd.DataFrame()
 
-def predict_on_image(img_input, model_key, conf=DEFAULT_CONF):
+def predict_on_image(img_input, model_key: str, conf: float | None = None):
     if isinstance(img_input, (bytes, bytearray)):
         pil_img = Image.open(io.BytesIO(img_input)).convert("RGB")
     elif isinstance(img_input, Image.Image):
         pil_img = img_input.convert("RGB")
     elif isinstance(img_input, (str, Path)):
-        pil_img = Image.open(str(img_input)).convert("RGB")
+        pil_img = Image.open(img_input).convert("RGB")
     elif isinstance(img_input, np.ndarray):
-        pil_img = Image.fromarray(cv2.cvtColor(img_input, cv2.COLOR_BGR2RGB)) if CV2_OK else Image.fromarray(img_input)
+        if img_input.ndim == 2:
+            pil_img = Image.fromarray(img_input)
+        elif img_input.ndim == 3:
+            if CV2_OK:
+                pil_img = Image.fromarray(cv2.cvtColor(img_input, cv2.COLOR_BGR2RGB))
+            else:
+                pil_img = Image.fromarray(img_input[..., ::-1])
+        else:
+            raise TypeError(f"Unsupported numpy shape: {img_input.shape}")
     else:
-        raise TypeError(f"不支持的输入类型：{type(img_input)}")
+        raise TypeError(f"Unsupported type: {type(img_input)}")
 
+    c = float(conf) if conf is not None else DEFAULT_CONF
+    # 修复KeyError：检查模型是否存在
     if model_key not in MODELS:
-        model_key = next(iter(MODELS.keys())) if MODELS else None
+        st.warning(f"模型{model_key}不存在，已切换为Ich模型")
+        model_key = "Ich" if "Ich" in MODELS else list(MODELS.keys())[0] if MODELS else None
     if not model_key:
-        raise RuntimeError("无可用模型")
-    
-    results = MODELS[model_key](source=pil_img, conf=conf, imgsz=640, verbose=False)
-    det_img = results[0].plot()
-    det_img_rgb = cv2.cvtColor(det_img, cv2.COLOR_BGR2RGB) if CV2_OK else det_img
-    return Image.fromarray(det_img_rgb), detections_to_df(results[0])
+        raise RuntimeError("无任何可用模型！")
+    r = MODELS[model_key].predict(source=pil_img, conf=c, imgsz=640, verbose=False)[0]
+    im_bgr = r.plot()
+    im_rgb = im_bgr[..., ::-1]
+    vis_pil = Image.fromarray(im_rgb)
+    df = detections_to_df(r)
+    return vis_pil, df
 
-def process_video(video_bytes, model_key, conf=DEFAULT_CONF, max_frames=None):
+# 原有视频处理函数（修复KeyError）
+def process_video(video_bytes: bytes, model_key: str, conf: float | None = None, max_frames: int | None = None) -> Path:
     if not CV2_OK:
-        raise RuntimeError(t('video_disabled'))
-    
-    # 临时输入文件
-    in_path = BASE_DIR / f"tmp_input_{int(time.time())}.mp4"
-    in_path.write_bytes(video_bytes)
-    
+        raise RuntimeError(t("video_disabled"))
+    in_path = Path("input_tmp.mp4"); in_path.write_bytes(video_bytes)
     cap = cv2.VideoCapture(str(in_path))
-    if not cap.isOpened():
-        in_path.unlink()
-        raise RuntimeError("无法读取视频")
-    
-    # 获取视频参数
-    fps = int(cap.get(cv2.CAP_PROP_FPS)) or 25
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    
-    # 输出文件（绝对路径）
-    out_path = BASE_DIR / f"processed_{int(time.time())}.mp4"
-    
-    # 关键修复：使用H.264编码（avc1），兼容Streamlit预览
-    try:
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')  # H.264
-    except:
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # 降级兼容
-    out = cv2.VideoWriter(str(out_path), fourcc, fps, (width, height))
-    
-    frame_count = 0
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret or (max_frames and frame_count >= max_frames):
-            break
-        
-        # 模型推理
-        results = MODELS[model_key](source=frame, conf=conf, imgsz=640, verbose=False)
-        out.write(results[0].plot())
-        frame_count += 1
-    
-    cap.release()
-    out.release()
-    in_path.unlink()  # 删除临时输入文件
+    if not cap.isOpened(): raise RuntimeError("无法读取视频" if st.session_state.language == 'zh' else "Cannot read video")
+
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25
+    w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    out_path = Path(f"processed_{int(time.time())}.mp4")
+    vw = cv2.VideoWriter(str(out_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+
+    i = 0
+    while True:
+        ok, frame = cap.read()
+        if not ok: break
+        i += 1
+        if max_frames and i > max_frames: break
+        c = float(conf) if conf is not None else DEFAULT_CONF
+        # 修复KeyError：检查模型是否存在
+        if model_key not in MODELS:
+            st.warning(f"模型{model_key}不存在，已切换为Ich模型")
+            model_key = "Ich" if "Ich" in MODELS else list(MODELS.keys())[0] if MODELS else None
+        if not model_key:
+            raise RuntimeError("无任何可用模型！")
+        r = MODELS[model_key].predict(source=frame, conf=c, imgsz=640, verbose=False)[0]
+        vw.write(r.plot())
+
+    cap.release(); vw.release()
     return out_path
 
-# 轨迹分析核心函数（修复视频编码+字节流）
-def calculate_fish_trajectory(video_bytes, model_key, conf=DEFAULT_CONF, max_frames=None):
+# 轨迹分析核心函数（支持自定义模型）
+def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = DEFAULT_CONF, max_frames: int = None) -> dict:
+    """
+    分析视频中金鱼的运动轨迹（支持指定模型）
+    :param model_key: 要使用的模型名称
+    """
     if not CV2_OK:
         return {
             "success": False,
-            "message": t('video_disabled'),
+            "message": t("video_disabled"),
             "total_distance": 0,
             "average_speed": 0,
             "video_duration": 0,
             "total_frames": 0,
-            "processed_video_path": "",
-            "processed_video_bytes": b""
+            "processed_video_path": ""
         }
     
-    # 校验模型
+    # 校验模型是否存在
     if model_key not in MODELS:
-        model_key = next(iter(MODELS.keys())) if MODELS else None
+        st.warning(f"模型{model_key}不存在，已切换为{list(MODELS.keys())[0]}")
+        model_key = list(MODELS.keys())[0] if MODELS else None
     if not model_key:
         return {
             "success": False,
-            "message": "无可用模型",
+            "message": "无可用模型！",
             "total_distance": 0,
             "average_speed": 0,
             "video_duration": 0,
             "total_frames": 0,
-            "processed_video_path": "",
-            "processed_video_bytes": b""
+            "processed_video_path": ""
         }
     
-    # 临时输入文件（绝对路径）
-    in_path = BASE_DIR / f"traj_input_{int(time.time())}.mp4"
-    in_path.write_bytes(video_bytes)
-    
-    # 打开视频
-    cap = cv2.VideoCapture(str(in_path))
-    if not cap.isOpened():
-        in_path.unlink()
-        return {
-            "success": False,
-            "message": "无法读取视频文件",
-            "total_distance": 0,
-            "average_speed": 0,
-            "video_duration": 0,
-            "total_frames": 0,
-            "processed_video_path": "",
-            "processed_video_bytes": b""
-        }
-    
-    # 视频参数
-    fps = int(cap.get(cv2.CAP_PROP_FPS)) or 25
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    total_frames_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    
-    # 输出视频路径（绝对路径）
-    out_path = BASE_DIR / f"traj_output_{int(time.time())}.mp4"
-    
-    # 关键修复：强制H.264编码
-    try:
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')  # H.264（Streamlit预览兼容）
-    except Exception:
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # 降级
-    out = cv2.VideoWriter(str(out_path), fourcc, fps, (width, height))
-    
-    # 轨迹计算变量
+    # 初始化变量
     prev_center = None
     total_distance = 0.0
-    frame_count = 0
+    total_frames = 0
     trajectory_points = []
     
-    # 目标类别过滤
+    # 动态匹配当前模型的类别名（适配不同模型）
     current_model = MODELS[model_key]
     model_class_names = current_model.names
     fish_keywords = ["healthy", "subhealthy", "diseased", "健康", "亚健康", "患病", "金鱼", "fish"]
@@ -362,34 +359,95 @@ def calculate_fish_trajectory(video_bytes, model_key, conf=DEFAULT_CONF, max_fra
         if any(keyword.lower() in cls_name.lower() for keyword in fish_keywords):
             fish_categories.add(cls_name)
             fish_categories.add(t(cls_name))
+    # 核心修改：将Healthy替换为health
     fish_categories.update({"健康", "亚健康", "患病", "health", "Subhealthy", "Diseased"})
     
-    # 进度条
+    # 写入临时视频文件
+    in_path = Path("traj_input_tmp.mp4")
+    in_path.write_bytes(video_bytes)
+    
+    # 打开视频
+    cap = cv2.VideoCapture(str(in_path))
+    if not cap.isOpened():
+        return {
+            "success": False,
+            "message": "无法读取视频文件" if st.session_state.language == 'zh' else "Cannot read video file",
+            "total_distance": 0,
+            "average_speed": 0,
+            "video_duration": 0,
+            "total_frames": 0,
+            "processed_video_path": ""
+        }
+    
+    # 获取视频基本信息
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    # 初始化视频写入器
+    processed_video_path = Path(f"traj_processed_{int(time.time())}.mp4")
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    out = cv2.VideoWriter(str(processed_video_path), fourcc, fps, (w, h))
+    
+    # 逐帧处理
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    # 逐帧处理
-    while cap.isOpened():
+    while True:
         ret, frame = cap.read()
-        if not ret or (max_frames and frame_count >= max_frames):
+        if not ret:
+            break
+        total_frames += 1
+        
+        if max_frames and total_frames > max_frames:
             break
         
         # 更新进度
-        progress = min(frame_count / total_frames_total, 1.0)
+        progress = min(total_frames / total_frames_total, 1.0)
         progress_bar.progress(progress)
-        status_text.text(f"{t('tracking_processing')} {frame_count}/{total_frames_total}")
+        status_text.text(f"{t('tracking_processing')} {total_frames}/{total_frames_total}")
         
-        # 模型推理
-        results = current_model(source=frame, conf=conf, imgsz=640, verbose=False)
-        result_frame = results[0].plot()
+        # 模型推理（使用指定的模型）
+        try:
+            r = MODELS[model_key].predict(source=frame, conf=conf, imgsz=640, verbose=False)[0]
+        except Exception as e:
+            status_text.empty()
+            progress_bar.empty()
+            cap.release()
+            out.release()
+            in_path.unlink(missing_ok=True)
+            processed_video_path.unlink(missing_ok=True)
+            return {
+                "success": False,
+                "message": f"帧推理失败: {str(e)}",
+                "total_distance": 0,
+                "average_speed": 0,
+                "video_duration": 0,
+                "total_frames": total_frames,
+                "processed_video_path": ""
+            }
         
-        # 提取目标中心坐标
+        # 绘制检测框
+        frame_with_detect = r.plot()
+        
+        # 调试信息：第一帧打印检测类别
+        if total_frames == 1:
+            detected_classes = []
+            if hasattr(r, "boxes") and len(r.boxes) > 0:
+                for box in r.boxes:
+                    cls_idx = int(box.cls.item())
+                    cls_name = r.names.get(cls_idx, f"未知类别_{cls_idx}")
+                    detected_classes.append(cls_name)
+            st.info(f"模型[{model_key}]检测到的类别（第一帧）：{detected_classes} | 目标过滤类别：{fish_categories}")
+        
+        # 提取当前帧金鱼中心坐标
         current_center = None
         max_conf = 0.0
-        if hasattr(results[0], "boxes") and len(results[0].boxes) > 0:
-            for box in results[0].boxes:
+        if hasattr(r, "boxes") and len(r.boxes) > 0:
+            for box in r.boxes:
                 cls_idx = int(box.cls.item())
-                cls_name = results[0].names.get(cls_idx, "")
+                cls_name = r.names.get(cls_idx, "")
                 if cls_name in fish_categories:
                     conf_score = float(box.conf.item())
                     if conf_score > max_conf:
@@ -399,76 +457,65 @@ def calculate_fish_trajectory(video_bytes, model_key, conf=DEFAULT_CONF, max_fra
                         center_y = int((xyxy[1] + xyxy[3]) / 2)
                         current_center = (center_x, center_y)
         
-        # 计算轨迹距离
+        # 优化轨迹容错逻辑
         if current_center is not None:
-            trajectory_points.append(current_center)
             if prev_center is not None:
-                # 欧氏距离
-                distance = math.hypot(
-                    current_center[0] - prev_center[0],
-                    current_center[1] - prev_center[1]
-                )
+                distance = math.hypot(current_center[0] - prev_center[0], current_center[1] - prev_center[1])
                 total_distance += distance
-                # 绘制轨迹线
-                cv2.line(result_frame, prev_center, current_center, (0, 0, 255), 2)
-            # 绘制中心点
-            cv2.circle(result_frame, current_center, 5, (255, 0, 0), -1)
+                cv2.line(frame_with_detect, prev_center, current_center, (0, 0, 255), 2)
+            trajectory_points.append(current_center)
+            cv2.circle(frame_with_detect, current_center, 5, (255, 0, 0), -1)
             prev_center = current_center
         
-        # 写入视频
-        out.write(result_frame)
-        frame_count += 1
+        # 写入视频帧
+        out.write(frame_with_detect)
     
     # 清理资源
     cap.release()
     out.release()
+    in_path.unlink(missing_ok=True)
     progress_bar.empty()
     status_text.empty()
     
     # 计算统计值
-    video_duration = frame_count / fps if fps > 0 else 0
+    video_duration = total_frames / fps if fps > 0 else 0
     average_speed = total_distance / video_duration if video_duration > 0 else 0
     
-    # 关键修复：读取视频为字节流（用于预览）
-    processed_video_bytes = b""
-    if out_path.exists():
-        with open(out_path, "rb") as f:
-            processed_video_bytes = f.read()
+    # 优化提示信息
+    if total_distance == 0:
+        return {
+            "success": True,
+            "message": f"{t('no_fish_detected')} | 模型：{model_key} | 建议：1.降低置信度阈值 2.确认视频中有金鱼 3.检查模型类别是否匹配（当前过滤类别：{fish_categories}）",
+            "total_distance": 0,
+            "average_speed": 0,
+            "video_duration": round(video_duration, 2),
+            "total_frames": total_frames,
+            "processed_video_path": str(processed_video_path) if processed_video_path.exists() else ""
+        }
     
-    # 调试信息
-    st.info(f"""
-    视频编码：{"H.264 (avc1)" if fourcc == cv2.VideoWriter_fourcc(*'avc1') else "MP4V"}
-    视频路径：{str(out_path)}
-    视频大小：{len(processed_video_bytes) / 1024 / 1024:.2f} MB
-    目标过滤类别：{fish_categories}
-    """)
-    
-    # 返回结果（包含字节流）
     return {
         "success": True,
         "message": f"轨迹分析完成（使用模型：{model_key}）",
         "total_distance": round(total_distance, 2),
         "average_speed": round(average_speed, 2),
         "video_duration": round(video_duration, 2),
-        "total_frames": frame_count,
-        "processed_video_path": str(out_path),
-        "processed_video_bytes": processed_video_bytes  # 新增：视频字节流
+        "total_frames": total_frames,
+        "processed_video_path": str(processed_video_path) if processed_video_path.exists() else ""
     }
 
-def save_table_to_excel(df, filename):
+def save_table_to_excel(df: pd.DataFrame, filename: str) -> Path:
     out = Path(filename).with_suffix(".xlsx")
     with pd.ExcelWriter(out, engine="xlsxwriter") as w:
-        df.to_excel(w, sheet_name="detections", index=False)
+        df.to_excel(w, sheet_name="detections" if st.session_state.language == 'zh' else "Detections", index=False)
     return out
 
-def zip_files(files, out_zip):
+def zip_files(files: list[Path], out_zip: Path) -> Path:
     with zipfile.ZipFile(out_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for f in files:
-            if f.exists():
-                zf.write(f, arcname=f.name)
+            if f.exists(): zf.write(f, arcname=f.name)
     return out_zip
 
-# 模糊预测
+# ========= 模糊预测 =========
 @st.cache_resource
 def build_fuzzy_sim():
     day = ctrl.Antecedent(np.arange(1, 4.1, 0.1), 'day')
@@ -517,14 +564,12 @@ def build_fuzzy_sim():
         ctrl.Rule(day['diseased'] & night['diseased'] & surf['healthy'] & patho['present'], risk['diseased']),
         ctrl.Rule(day['diseased'] & night['diseased'] & surf['diseased'] & patho['present'], risk['diseased']),
     ]
-    for r in rules:
-        r.weight = 1.0
-    rules[4].weight = 2
-    rules[5].weight = 2
+    for r in rules: r.weight = 1.0
+    rules[4].weight = 2; rules[5].weight = 2
 
     return ctrl.ControlSystemSimulation(ctrl.ControlSystem(rules))
 
-def fuzzy_predict(day_val, night_val, surf_val, patho_val):
+def fuzzy_predict(day_val: float, night_val: float, surf_val: float, patho_val: float) -> dict:
     sim = build_fuzzy_sim()
     sim.input['day'] = day_val
     sim.input['night'] = night_val
@@ -538,247 +583,313 @@ def fuzzy_predict(day_val, night_val, surf_val, patho_val):
         status = t("healthy") if v < 1.5 else (t("subhealthy") if v < 2.5 else t("diseased"))
     return {"risk_value": round(v, 1), "risk_status": status}
 
-# ====================== 页面样式 ======================
+# ========================= 全局样式 =========================
 st.markdown("""
 <style>
 .app-header {
   background: linear-gradient(90deg, #4F46E5 0%, #7C3AED 100%);
   color: white; border-radius: 16px; padding: 16px 20px; margin-bottom: 12px;
+  display:flex; align-items:center; gap:14px;
 }
+.app-title { font-size: 22px; font-weight: 700; letter-spacing:.3px; }
+.app-subtitle { opacity:.9; font-size: 13px; }
+
+.note {
+  background:#EEF2FF; border:1px solid #E0E7FF; color:#3730A3;
+  border-radius: 12px; padding: 10px 12px; margin: 6px 0 16px 0; font-size:13px;
+}
+
 .card {
-  background: #F6F7FB; border: 1px solid #E5E7EB; border-radius: 14px; padding: 14px; margin-bottom: 12px;
+  background: var(--secondary-bg, #F6F7FB);
+  border: 1px solid #E5E7EB;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
 }
-.traj-card {
-  background: #f0f8ff; border: 1px solid #b8d4ff; border-radius: 12px; padding: 16px; margin: 8px 0;
-}
-.traj-metric {
-  font-size: 18px; font-weight: 600; color: #2563eb;
-}
+
+:root { --secondary-bg: #F6F7FB; }
+[data-base-theme="light"] :root { --secondary-bg: #F6F7FB; }
+[data-base-theme="dark"]  :root { --secondary-bg: #111827; }
+
+[data-testid="stDataFrame"] { border-radius: 12px; overflow:hidden; }
+
 .stButton>button { border-radius: 10px; }
 .block-container { padding-top: 0.6rem; padding-bottom: 1rem; }
+
 .badge {
+  display: inline-flex; align-items: center; gap: 6px;
   background: #EEF2FF; color:#3730A3; border:1px solid #E0E7FF;
   padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight:600;
 }
+
+/* 语言切换按钮样式 */
+.lang-switch {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 999;
+}
+
+/* 轨迹统计卡片样式 */
+.traj-card {
+  background: #f0f8ff;
+  border: 1px solid #b8d4ff;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 8px 0;
+}
+.traj-metric {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2563eb;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# 隐藏默认组件
+# 隐藏Streamlit默认组件
 st.markdown("""
 <style>
-header[data-testid="stHeader"], #MainMenu, footer {visibility: hidden;}
+header[data-testid="stHeader"] {visibility: hidden;}
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
 [data-testid="stAppViewContainer"] .main .block-container { padding-top: 0.8rem !important; }
+.app-header { margin-top: 4px; }
+#svc-config { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ====================== 侧边栏 ======================
+# 语言切换按钮
 with st.sidebar:
-    # 语言切换
-    col1, col2 = st.columns(2)
-    with col1:
+    lang_col1, lang_col2 = st.columns(2)
+    with lang_col1:
         if st.button('中文', use_container_width=True):
             st.session_state.language = 'zh'
             st.rerun()
-    with col2:
+    with lang_col2:
         if st.button('English', use_container_width=True):
             st.session_state.language = 'en'
             st.rerun()
-    
-    st.markdown(f"### 🎓 {t('sidebar_university')}")
-    st.divider()
-    
-    # 全局模型选择
-    st.header(t('sidebar_model'))
-    if MODELS:
-        model_options = {k: t(k) for k in MODELS.keys()}
-        model_value = st.selectbox(
-            t('sidebar_model_type'),
-            options=list(model_options.keys()),
-            format_func=lambda x: f"{x}（{model_options[x]}）",
-            index=0 if "Ich" in model_options else 0
-        )
-        st.markdown(f"<span class='badge'>{t('sidebar_current_model')} <b>{model_value}</b></span>", unsafe_allow_html=True)
-    else:
-        model_value = None
-        st.error("无可用模型，请检查模型文件！")
 
-# ====================== 顶部标题 ======================
+# 顶部导航条
 st.markdown(f"""
+<style>
+.app-header {{
+  background: linear-gradient(90deg, #4F46E5 0%, #7C3AED 100%);
+  color: white;
+  border-radius: 14px;
+  padding: 14px 18px;
+  margin-bottom: 14px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}}
+.app-title-row {{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}}
+.app-icon {{
+  font-size: 42px;
+}}
+.app-title {{
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}}
+.app-subtitle {{
+  font-size: 20px;
+  opacity: 0.95;
+}}
+</style>
 <div class="app-header">
-  <h1>{t('header_title')}</h1>
-  <p>{t('header_subtitle')}</p>
+  <div class="app-title-row">
+    <div class="app-icon">🧪</div>
+    <div class="app-title">{t('header_title')}</div>
+  </div>
+  <div class="app-subtitle">{t('header_subtitle')}</div>
 </div>
 """, unsafe_allow_html=True)
 
-# ====================== 标签页 ======================
+# 侧边栏（修复模型选择KeyError）
+with st.sidebar:
+    st.markdown(f"### 🎓 {t('sidebar_university')}")
+    st.markdown('<div id="svc-config">', unsafe_allow_html=True)
+    base_url = "http://localhost:8080"
+    ws_url_override = base_url.replace("http://", "ws://").replace("https://", "wss://")
+    st.divider()
+    st.header(t('sidebar_model'))
+    # 仅显示已加载的模型
+    model_options = {"Ich": t('Ich'), "Tomont": t('Tomont'), "行为": t('行为')}
+    available_models = {k: model_options.get(k, k) for k in MODELS.keys()}
+    if not available_models:
+        st.error("无可用模型，请检查模型文件路径！")
+        model_value = None
+    else:
+        default_model = "Ich" if "Ich" in available_models else list(available_models.keys())[0]
+        model_value = st.selectbox(
+            t('sidebar_model_type'), 
+            options=list(available_models.keys()),
+            format_func=lambda x: f"{x}（{available_models[x]}）",
+            index=list(available_models.keys()).index(default_model) if default_model in available_models else 0
+        )
+    # 显示当前模型（容错）
+    if model_value and model_value in MODELS:
+        st.markdown(f"<span class='badge'>{t('sidebar_current_model')} <b>{model_value}</b></span>", unsafe_allow_html=True)
+        st.markdown("<small style='color:#666'>注：轨迹跟踪功能可独立选择模型</small>", unsafe_allow_html=True)
+    else:
+        st.markdown("<span class='badge' style='color:red'>当前无可用模型</span>", unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ========================= 标签页 =========================
 tab_img, tab_folder, tab_video, tab_camera, tab_tracking, tab_fuzzy = st.tabs([
-    t('tab_image'), t('tab_batch'), t('tab_video'), t('tab_camera'), t('tab_tracking'), t('tab_fuzzy')
+    t('tab_image'), 
+    t('tab_batch'), 
+    t('tab_video'), 
+    t('tab_camera'), 
+    t('tab_tracking'),
+    t('tab_fuzzy')
 ])
 
-# -------------------------- 图片检测 --------------------------
+# -------------------------------- 1) 图片检测 --------------------------------
 with tab_img:
     st.markdown(f"#### {t('tab_image')}")
     col1, col2 = st.columns(2)
-    
     with col1:
         st.markdown(f"<div class='card'><b>{t('image_original')}</b></div>", unsafe_allow_html=True)
-        img_file = st.file_uploader(t('image_upload'), type=["jpg","jpeg","png","bmp","webp"], key="single_img")
+        img_file = st.file_uploader(t('image_upload'), type=["jpg","jpeg","png","bmp","webp"], key="single_img_main")
         if img_file:
             st.image(Image.open(img_file), caption=t('image_original'), use_column_width=True)
-    
     with col2:
         st.markdown(f"<div class='card'><b>{t('image_detection')}</b></div>", unsafe_allow_html=True)
-        run_btn = st.button(t('image_run'), type="primary", use_container_width=True, disabled=not (img_file and model_value))
-        
-        if run_btn and img_file and model_value:
-            with st.spinner(t('batch_processing')):
+        run_single = st.button(t('image_run'), type="primary", use_container_width=True, disabled=img_file is None or model_value is None)
+        if run_single and img_file:
+            with st.spinner("本地模型推理中..." if st.session_state.language == 'zh' else "Local model inferencing..."):
                 det_img, df = predict_on_image(img_file.getvalue(), model_value)
-            
             st.image(det_img, caption=t('image_result'), use_column_width=True)
             if not df.empty:
                 st.dataframe(df, use_container_width=True)
-                col_a, col_b = st.columns(2)
-                with col_a:
+                c1, c2 = st.columns(2)
+                with c1:
                     if st.button(t('image_download_excel'), use_container_width=True):
-                        xlsx_path = save_table_to_excel(df, "image_result.xlsx")
-                        st.download_button(
-                            t('image_download_excel'),
-                            data=open(xlsx_path, "rb").read(),
-                            file_name=xlsx_path.name,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                with col_b:
+                        xlsx_path = save_table_to_excel(df, "image_detect_result.xlsx")
+                        st.download_button(t('image_download_excel'), data=open(xlsx_path, "rb").read(),
+                                           file_name=xlsx_path.name,
+                                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                with c2:
                     if st.button(t('image_download_img'), use_container_width=True):
-                        bio = io.BytesIO()
+                        bio = io.BytesIO();
                         det_img.save(bio, format="JPEG")
-                        st.download_button(
-                            t('image_download_img'),
-                            data=bio.getvalue(),
-                            file_name="image_result.jpg",
-                            mime="image/jpeg"
-                        )
+                        st.download_button(t('image_download_img'), data=bio.getvalue(), file_name="image_detect_result.jpg",
+                                           mime="image/jpeg")
 
-# -------------------------- 批量检测 --------------------------
+# ----------------------------- 2) 批量图片检测 -----------------------------
 with tab_folder:
     st.markdown(f"#### {t('tab_batch')}")
     files = st.file_uploader(
         t('batch_upload'),
-        type=["jpg","jpeg","png","bmp","webp"],
+        type=["jpg", "jpeg", "png", "bmp", "webp"],
         accept_multiple_files=True,
-        key="batch_imgs"
+        key="multi_imgs",
     )
-    
-    run_btn = st.button(t('batch_run'), type="primary", use_container_width=True, disabled=not (files and model_value))
-    
-    if run_btn and files and model_value:
-        all_dfs = []
-        out_imgs = []
+    go = st.button(t('batch_run'), type="primary", disabled=not files or model_value is None)
+    if go and files:
+        all_tables: List[pd.DataFrame] = []
+        out_imgs: List[Path] = []
         progress = st.progress(0)
         status = st.empty()
-        
-        for i, f in enumerate(files):
-            status.text(f"{t('batch_processing')} {f.name} ({i+1}/{len(files)})")
-            with st.spinner(f"处理 {f.name}..."):
+        total = len(files)
+        for i, f in enumerate(files, start=1):
+            status.info(f"{t('batch_processing')}{f.name} ({i}/{total})")
+            with st.spinner(f"{t('batch_processing')}{f.name}"):
                 det_img, df = predict_on_image(f.getvalue(), model_value)
                 if not df.empty:
-                    df[t('path')] = f.name
-                    all_dfs.append(df)
-                
-                # 保存检测后图片
-                out_path = BASE_DIR / f"{Path(f.name).stem}_detect.jpg"
+                    df[t("path")] = f.name
+                    all_tables.append(df)
+                out_path = Path(f"{Path(f.name).stem}_detect.jpg")
                 det_img.save(out_path)
                 out_imgs.append(out_path)
-            
-            progress.progress((i+1)/len(files))
-        
-        # 结果展示
-        if all_dfs:
-            df_all = pd.concat(all_dfs, ignore_index=True)
+            progress.progress(i / total)
+        df_all = pd.concat(all_tables, ignore_index=True) if all_tables else pd.DataFrame()
+        if not df_all.empty:
             st.dataframe(df_all, use_container_width=True)
-            
-            # Excel下载
-            xlsx_path = save_table_to_excel(df_all, "batch_result.xlsx")
+            xlsx_path = save_table_to_excel(df_all, "batch_detect.xlsx")
             st.download_button(
                 t('batch_download_excel'),
                 data=open(xlsx_path, "rb").read(),
                 file_name=xlsx_path.name,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
+                use_container_width=True,
             )
-        
-        # 图片打包下载
+        else:
+            st.info(t('batch_no_results'))
         if out_imgs:
-            zip_path = zip_files(out_imgs, BASE_DIR / "batch_images.zip")
+            zpath = zip_files(out_imgs, Path("batch_detect_images.zip"))
             st.download_button(
                 t('batch_download_zip'),
-                data=open(zip_path, "rb").read(),
-                file_name=zip_path.name,
+                data=open(zpath, "rb").read(),
+                file_name=zpath.name,
                 mime="application/zip",
-                use_container_width=True
+                use_container_width=True,
             )
-        
-        progress.empty()
         status.empty()
+        progress.empty()
 
-# -------------------------- 视频检测 --------------------------
+# -------------------------------- 3) 视频检测 --------------------------------
 with tab_video:
     st.markdown(f"#### {t('tab_video')}")
-    vid_file = st.file_uploader(t('video_upload'), type=["mp4","mov","avi","mkv"], key="single_video")
-    
-    run_btn = st.button(t('video_run'), type="primary", use_container_width=True, disabled=not (vid_file and model_value and CV2_OK))
-    
+    vid_file = st.file_uploader(
+        t('video_upload'), type=["mp4", "mov", "avi", "mkv"], key="video_file"
+    )
+    run_vid = st.button(t('video_run'), type="primary", disabled=(vid_file is None or not CV2_OK or model_value is None))
     if not CV2_OK:
         st.warning(t('video_disabled'))
-    
-    if run_btn and vid_file and model_value and CV2_OK:
+    if run_vid and vid_file:
         with st.spinner(t('video_processing')):
-            out_path = process_video(vid_file.getvalue(), model_value)
-        
+            out_path = process_video(vid_file.getvalue(), model_value, max_frames=None)
         st.video(str(out_path))
         st.download_button(
             t('video_download'),
             data=open(out_path, "rb").read(),
             file_name=out_path.name,
             mime="video/mp4",
-            use_container_width=True
         )
 
-# -------------------------- 摄像头检测 --------------------------
+# -------------------------- 4) 摄像头检测 --------------------------
 with tab_camera:
     st.markdown(f"#### {t('camera_title')}")
     st.caption(t('camera_caption'))
-    
     if "cam_on" not in st.session_state:
         st.session_state.cam_on = False
-    
     col_a, col_b = st.columns(2)
-    with col_a:
-        if st.button(t('camera_open'), type="primary", disabled=st.session_state.cam_on):
+    if not st.session_state.cam_on:
+        if col_a.button(t('camera_open'), type="primary"):
             st.session_state.cam_on = True
             st.rerun()
-    with col_b:
-        if st.button(t('camera_close'), type="secondary", disabled=not st.session_state.cam_on):
+        col_b.button(t('camera_close'), disabled=True)
+        st.info(t('camera_not_started'))
+    else:
+        if col_b.button(t('camera_close'), type="secondary"):
             st.session_state.cam_on = False
             st.rerun()
-    
-    if st.session_state.cam_on:
-        snap = st.camera_input(t('camera_shot'), key="cam_snap")
-        if snap and model_value:
-            if st.button(t('camera_detect'), type="primary", use_container_width=True):
-                with st.spinner(t('batch_processing')):
-                    det_img, df = predict_on_image(snap.getvalue(), model_value)
-                
-                st.image(det_img, caption=t('image_result'), use_column_width=True)
-                if not df.empty:
-                    st.dataframe(df, use_container_width=True)
-    else:
-        st.info(t('camera_not_started'))
+        col_a.button(t('camera_open'), disabled=True)
+        snap = st.camera_input(t('camera_shot'), key="cam_shot")
+        go = st.button(t('camera_detect'), type="primary", disabled=(snap is None or model_value is None))
+        if go and snap is not None:
+            with st.spinner("本地模型推理中..." if st.session_state.language == 'zh' else "Local model inferencing..."):
+                det_img, df = predict_on_image(snap.getvalue(), model_value)
+            st.image(det_img, caption=t('image_result'), use_column_width=True)
+            if not df.empty:
+                st.dataframe(df, use_container_width=True)
 
-# -------------------------- 轨迹跟踪（核心修复） --------------------------
+# -------------------------- 5) 轨迹跟踪（支持模型切换） --------------------------
 with tab_tracking:
     st.markdown(f"#### {t('tracking_title')}")
     
-    # 轨迹模型选择（独立于全局模型）
+    # 新增：轨迹跟踪专属模型选择
     if MODELS:
         model_tracking_options = {k: t(k) for k in MODELS.keys()}
         model_tracking = st.selectbox(
@@ -788,120 +899,113 @@ with tab_tracking:
             index=0 if "Ich" in model_tracking_options else 0,
             key="tracking_model"
         )
-        st.markdown(f"<div class='card'>当前使用模型：{model_tracking}（{model_tracking_options[model_tracking]}）</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='note'>当前使用模型：{model_tracking}（{model_tracking_options[model_tracking]}）</div>", unsafe_allow_html=True)
     else:
-        model_tracking = None
         st.error("无可用模型，请先检查模型文件！")
+        model_tracking = None
     
     # 视频上传
     vid_file = st.file_uploader(
         t('tracking_upload'),
-        type=["mp4","mov","avi","mkv"],
-        key="tracking_video",
-        help="支持MP4/MOV/AVI/MKV，建议时长≤1分钟"
+        type=["mp4", "mov", "avi", "mkv"],
+        key="tracking_video_file",
+        help="支持常见视频格式，建议时长不超过1分钟以保证分析速度"
     )
     
-    # 视频预览分栏
+    # 展示原始视频
     if vid_file:
-        st.markdown("### 🎬 视频预览")
-        col_origin, col_traj = st.columns(2)
-        
-        # 原始视频
-        with col_origin:
-            st.markdown("#### 原始视频")
-            st.video(vid_file)
-        
-        # 轨迹视频预览区（初始提示）
-        with col_traj:
-            st.markdown("#### 带轨迹跟踪的视频")
-            traj_video_placeholder = st.empty()
-            traj_video_placeholder.info("点击“开始轨迹分析”后，此处将显示带轨迹的视频预览")
-    else:
-        traj_video_placeholder = None
-        st.info("请先上传视频文件，上传后将显示原始视频和轨迹视频预览区域")
+        st.markdown("### 🎬 原始视频")
+        st.video(vid_file)
     
-    # 参数设置
-    st.markdown("### ⚙️ 分析参数")
-    col_conf, col_frames = st.columns(2)
-    with col_conf:
-        conf_threshold = st.slider(
-            "检测置信度阈值",
-            min_value=0.05, max_value=1.0, value=0.3, step=0.05,
-            help="阈值越低，检测到的目标越多（可能包含误检）"
-        )
-    with col_frames:
-        max_frames = st.number_input(
-            "最大分析帧数（0=无限制）",
-            min_value=0, max_value=10000, value=0, step=100
-        )
+    # 置信度阈值（降低默认值）
+    conf_threshold = st.slider(
+        "检测置信度阈值（降低以检测更多目标）",
+        min_value=0.05,
+        max_value=1.0,
+        value=0.3,
+        step=0.05,
+        key="tracking_conf",
+        help="阈值越低，检测到的目标越多（可能包含误检）"
+    )
+    
+    # 最大帧数限制
+    max_frames = st.number_input(
+        "最大分析帧数（0=无限制）",
+        min_value=0,
+        max_value=10000,
+        value=0,
+        step=100,
+        key="tracking_max_frames"
+    )
     
     # 开始分析按钮
     run_tracking = st.button(
         t('tracking_run'),
         type="primary",
-        disabled=(not vid_file or not CV2_OK or not model_tracking),
+        disabled=(vid_file is None or not CV2_OK or not model_tracking),
         use_container_width=True
     )
     
+    # CV2未加载提示
     if not CV2_OK:
         st.warning(t('video_disabled'))
     
-    # 执行轨迹分析
+    # 执行轨迹分析（传入选择的模型）
     if run_tracking and vid_file and CV2_OK and model_tracking:
-        # 调用修复后的轨迹分析函数
-        result = calculate_fish_trajectory(
-            video_bytes=vid_file.getvalue(),
-            model_key=model_tracking,
-            conf=conf_threshold,
-            max_frames=max_frames if max_frames > 0 else None
-        )
+        with st.spinner(t('tracking_processing')):
+            result = calculate_fish_trajectory(
+                video_bytes=vid_file.getvalue(),
+                model_key=model_tracking,  # 传入选择的模型
+                conf=conf_threshold,
+                max_frames=max_frames if max_frames > 0 else None
+            )
         
-        # 结果展示
-        st.markdown("### 📊 轨迹分析结果")
+        # 展示结果
+        st.markdown("### 📊 分析结果")
         if result["success"]:
-            # 轨迹数据卡片
+            # 成功结果展示
             col1, col2, col3, col4 = st.columns(4)
+            
             with col1:
                 st.markdown(f"""
                 <div class="traj-card">
-                    <p>总路程（像素）</p>
+                    <p>{t('total_distance')}</p>
                     <p class="traj-metric">{result['total_distance']}</p>
                 </div>
                 """, unsafe_allow_html=True)
+            
             with col2:
                 st.markdown(f"""
                 <div class="traj-card">
-                    <p>平均速度（像素/秒）</p>
+                    <p>{t('average_speed')}</p>
                     <p class="traj-metric">{result['average_speed']}</p>
                 </div>
                 """, unsafe_allow_html=True)
+            
             with col3:
                 st.markdown(f"""
                 <div class="traj-card">
-                    <p>视频时长（秒）</p>
+                    <p>{t('video_duration')}</p>
                     <p class="traj-metric">{result['video_duration']}</p>
                 </div>
                 """, unsafe_allow_html=True)
+            
             with col4:
                 st.markdown(f"""
                 <div class="traj-card">
-                    <p>分析帧数</p>
+                    <p>{t('total_frames')}</p>
                     <p class="traj-metric">{result['total_frames']}</p>
                 </div>
                 """, unsafe_allow_html=True)
             
-            # 关键修复：使用字节流预览视频
-            if result["processed_video_bytes"] and traj_video_placeholder:
-                traj_video_placeholder.empty()
-                # 直接传入字节流（避免路径问题）
-                traj_video_placeholder.video(result["processed_video_bytes"])
-            
-            # 下载按钮
+            # 展示带轨迹的检测视频
             if result["processed_video_path"] and Path(result["processed_video_path"]).exists():
-                st.markdown("### 📥 视频下载")
+                st.markdown("### 🎬 带轨迹的检测视频")
+                st.video(result["processed_video_path"])
+                # 下载按钮（文件名包含模型名）
                 st.download_button(
                     label="下载带轨迹的检测视频",
-                    data=result["processed_video_bytes"],  # 使用字节流下载
+                    data=open(result["processed_video_path"], "rb").read(),
                     file_name=f"traj_video_{model_tracking}_{int(time.time())}.mp4",
                     mime="video/mp4",
                     use_container_width=True
@@ -912,26 +1016,22 @@ with tab_tracking:
                 st.info(result["message"])
             else:
                 st.success(result["message"])
+        
         else:
-            # 失败处理
-            if traj_video_placeholder:
-                traj_video_placeholder.empty()
-                traj_video_placeholder.error(f"轨迹分析失败：{result['message']}")
+            # 失败提示
             st.error(f"分析失败：{result['message']}")
 
-# -------------------------- 模糊预测 --------------------------
+# -------------------------------- 6) 模糊预测 --------------------------------
 with tab_fuzzy:
     st.markdown(f"#### {t('fuzzy_title')}")
     st.markdown(f"<div class='card'><b>{t('fuzzy_input')}</b></div>", unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        day_val = st.number_input(t('fuzzy_day'), min_value=1.0, max_value=3.0, value=3.0, step=1.0)
-        night_val = st.number_input(t('fuzzy_night'), min_value=1.0, max_value=3.0, value=1.0, step=1.0)
-    with col2:
-        surf_val = st.number_input(t('fuzzy_surface'), min_value=1.0, max_value=3.0, value=3.0, step=1.0)
-        patho_val = st.number_input(t('fuzzy_pathogen'), min_value=1.0, max_value=3.0, value=3.0, step=1.0)
-    
-    if st.button(t('fuzzy_predict'), type="primary", use_container_width=True):
-        result = fuzzy_predict(day_val, night_val, surf_val, patho_val)
-        st.success(t('fuzzy_result').format(risk_value=result['risk_value'], risk_status=result['risk_status']))
+    c1, c2 = st.columns(2)
+    with c1:
+        day_behavior   = st.number_input(t('fuzzy_day'),  min_value=1.0, max_value=3.0, value=3.0, step=1.0)
+        night_behavior = st.number_input(t('fuzzy_night'),  min_value=1.0, max_value=3.0, value=1.0, step=1.0)
+    with c2:
+        surface_features = st.number_input(t('fuzzy_surface'), min_value=1.0, max_value=3.0, value=3.0, step=1.0)
+        pathogen         = st.number_input(t('fuzzy_pathogen'), min_value=1.0, max_value=3.0, value=3.0, step=1.0)
+    if st.button(t('fuzzy_predict'), type="primary"):
+        r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
+        st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
