@@ -760,7 +760,6 @@ with st.sidebar:
     if model_value and model_value in MODELS:
         st.markdown(f"<span class='badge'>{t('sidebar_current_model')} <b>{model_value}</b></span>",
                     unsafe_allow_html=True)
-        st.markdown("<small style='color:#666'>注：轨迹跟踪功能可独立选择模型</small>", unsafe_allow_html=True)
     else:
         st.markdown("<span class='badge' style='color:red'>当前无可用模型</span>", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -910,25 +909,15 @@ with tab_camera:
             if not df.empty:
                 st.dataframe(df, use_container_width=True)
 
-# -------------------------- 5) 轨迹跟踪（支持模型切换） --------------------------
+# -------------------------- 5) 轨迹跟踪（复用左侧全局模型） --------------------------
 with tab_tracking:
     st.markdown(f"#### {t('tracking_title')}")
 
-    # 新增：轨迹跟踪专属模型选择
-    if MODELS:
-        model_tracking_options = {k: t(k) for k in MODELS.keys()}
-        model_tracking = st.selectbox(
-            "选择轨迹分析模型",
-            options=list(model_tracking_options.keys()),
-            format_func=lambda x: f"{x}（{model_tracking_options[x]}）",
-            index=0 if "Ich" in model_tracking_options else 0,
-            key="tracking_model"
-        )
-        st.markdown(f"<div class='note'>当前使用模型：{model_tracking}（{model_tracking_options[model_tracking]}）</div>",
-                    unsafe_allow_html=True)
+    # 移除专属模型选择，复用左侧全局model_value
+    if model_value and model_value in MODELS:
+        st.markdown(f"<div class='note'>当前使用模型：{model_value}（{t(model_value)}）</div>", unsafe_allow_html=True)
     else:
-        st.error("无可用模型，请先检查模型文件！")
-        model_tracking = None
+        st.error("无可用模型，请先在左侧侧边栏选择有效模型！")
 
     # 视频上传
     vid_file = st.file_uploader(
@@ -964,11 +953,11 @@ with tab_tracking:
         key="tracking_max_frames"
     )
 
-    # 开始分析按钮
+    # 开始分析按钮（禁用条件改为全局model_value）
     run_tracking = st.button(
         t('tracking_run'),
         type="primary",
-        disabled=(vid_file is None or not CV2_OK or not model_tracking),
+        disabled=(vid_file is None or not CV2_OK or model_value is None),
         use_container_width=True
     )
 
@@ -976,12 +965,12 @@ with tab_tracking:
     if not CV2_OK:
         st.warning(t('video_disabled'))
 
-    # 执行轨迹分析（传入选择的模型）
-    if run_tracking and vid_file and CV2_OK and model_tracking:
+    # 执行轨迹分析（使用全局model_value）
+    if run_tracking and vid_file and CV2_OK and model_value:
         with st.spinner(t('tracking_processing')):
             result = calculate_fish_trajectory(
                 video_bytes=vid_file.getvalue(),
-                model_key=model_tracking,  # 传入选择的模型
+                model_key=model_value,  # 使用左侧全局模型
                 conf=conf_threshold,
                 max_frames=max_frames if max_frames > 0 else None
             )
@@ -1028,11 +1017,11 @@ with tab_tracking:
             if result["processed_video_path"] and Path(result["processed_video_path"]).exists():
                 st.markdown("### 🎬 带轨迹的检测视频")
                 st.video(result["processed_video_path"])
-                # 下载按钮（文件名包含模型名）
+                # 下载按钮（文件名包含全局模型名）
                 st.download_button(
                     label="下载带轨迹的检测视频",
                     data=open(result["processed_video_path"], "rb").read(),
-                    file_name=f"traj_video_{model_tracking}_{int(time.time())}.mp4",
+                    file_name=f"traj_video_{model_value}_{int(time.time())}.mp4",
                     mime="video/mp4",
                     use_container_width=True
                 )
@@ -1061,4 +1050,3 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
-
