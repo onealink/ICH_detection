@@ -861,7 +861,7 @@ with tab_folder:
         status.empty()
         progress.empty()
 
-# -------------------------------- 3) 视频检测 --------------------------------
+# -------------------------------- 3) 视频检测（移除预览，仅保留下载） --------------------------------
 with tab_video:
     st.markdown(f"#### {t('tab_video')}")
     vid_file = st.file_uploader(
@@ -874,12 +874,14 @@ with tab_video:
     if run_vid and vid_file:
         with st.spinner(t('video_processing')):
             out_path = process_video(vid_file.getvalue(), model_value, max_frames=None)
-        st.video(str(out_path))
+        # 移除视频预览，仅保留下载按钮
+        st.success("视频处理完成！")
         st.download_button(
             t('video_download'),
             data=open(out_path, "rb").read(),
             file_name=out_path.name,
             mime="video/mp4",
+            use_container_width=True
         )
 
 # -------------------------- 4) 摄像头检测 --------------------------
@@ -909,7 +911,7 @@ with tab_camera:
             if not df.empty:
                 st.dataframe(df, use_container_width=True)
 
-# -------------------------- 5) 轨迹跟踪（复用左侧全局模型） --------------------------
+# -------------------------- 5) 轨迹跟踪（复用左侧全局模型，移除视频预览） --------------------------
 with tab_tracking:
     st.markdown(f"#### {t('tracking_title')}")
 
@@ -927,7 +929,7 @@ with tab_tracking:
         help="支持常见视频格式，建议时长不超过1分钟以保证分析速度"
     )
 
-    # 展示原始视频
+    # 展示原始视频（保留原始视频预览，仅移除处理后的视频预览）
     if vid_file:
         st.markdown("### 🎬 原始视频")
         st.video(vid_file)
@@ -1013,10 +1015,9 @@ with tab_tracking:
                 </div>
                 """, unsafe_allow_html=True)
 
-            # 展示带轨迹的检测视频
+            # 移除处理后视频预览，仅保留下载按钮
             if result["processed_video_path"] and Path(result["processed_video_path"]).exists():
-                st.markdown("### 🎬 带轨迹的检测视频")
-                st.video(result["processed_video_path"])
+                st.markdown("### 📥 处理后视频下载")
                 # 下载按钮（文件名包含全局模型名）
                 st.download_button(
                     label="下载带轨迹的检测视频",
