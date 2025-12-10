@@ -23,14 +23,14 @@ import skfuzzy as fuzz
 from skfuzzy import control as ctrl
 import time
 
-# ====================== 语言配置（新增轨迹跟踪翻译 + 模糊选项翻译） ======================
+# ====================== 语言配置（新增轨迹跟踪翻译 + 模糊选项翻译 + 模型名称优化） ======================
 if 'language' not in st.session_state:
     st.session_state.language = 'zh'  # 默认中文
 
-# 翻译字典（新增模糊选项翻译）
+# 翻译字典（优化模型名称翻译）
 translations = {
     'zh': {
-        # 原有翻译保留，新增以下字段
+        # 原有翻译保留，优化模型名称翻译
         'tab_tracking': '📍 轨迹跟踪',
         'tracking_title': '金鱼运动轨迹分析',
         'tracking_upload': '上传视频文件',
@@ -41,13 +41,15 @@ translations = {
         'video_duration': '视频时长（秒）',
         'total_frames': '总帧数',
         'no_fish_detected': '未检测到金鱼，无法计算轨迹数据',
-        # 新增行为模型翻译
-        '行为': '行为分析模型',
-        # 模糊预测新增翻译
+        # 模型名称优化翻译
+        'Ich': '多子小瓜虫体表病征',
+        'Tomont': '多子小瓜虫包囊',
+        '行为': '鱼游动行为分析',
+        # 模糊预测翻译
         'fuzzy_day': '日间行为',
         'fuzzy_night': '夜间行为',
         'fuzzy_surface': '体表特征',
-        'fuzzy_pathogen': '病原存在性',  # 改名
+        'fuzzy_pathogen': '病原存在性',
         'healthy': '健康',
         'subhealthy': '亚健康',
         'diseased': '患病',
@@ -96,8 +98,6 @@ translations = {
         'fuzzy_input': '输入指标参数',
         'fuzzy_predict': '🧪 预测',
         'fuzzy_result': '风险值: {risk_value}，状态: {risk_status}',
-        'Ich': '多子小瓜虫病',
-        'Tomont': '包囊',
         'category': '类别',
         'confidence': '置信度',
         'location': '位置',
@@ -106,7 +106,7 @@ translations = {
         'model_loaded': '成功加载模型：{k} -> {p}'
     },
     'en': {
-        # 原有翻译保留，新增以下字段
+        # 原有翻译保留，优化模型名称翻译
         'tab_tracking': '📍 Trajectory Tracking',
         'tracking_title': 'Goldfish Motion Trajectory Analysis',
         'tracking_upload': 'Upload Video File',
@@ -117,13 +117,15 @@ translations = {
         'video_duration': 'Video Duration (sec)',
         'total_frames': 'Total Frames',
         'no_fish_detected': 'No goldfish detected, cannot calculate trajectory data',
-        # 新增行为模型翻译
-        '行为': 'Behavior Analysis Model',
-        # 模糊预测新增翻译
+        # 模型名称优化翻译（英文版）
+        'Ich': 'Ichthyophthirius Surface Symptoms',
+        'Tomont': 'Ichthyophthirius Tomont',
+        '行为': 'Fish Swimming Behavior Analysis',
+        # 模糊预测翻译
         'fuzzy_day': 'Day Behavior',
         'fuzzy_night': 'Night Behavior',
         'fuzzy_surface': 'Surface Features',
-        'fuzzy_pathogen': 'Pathogen Existence',  # 改名
+        'fuzzy_pathogen': 'Pathogen Existence',
         'healthy': 'Healthy',
         'subhealthy': 'Subhealthy',
         'diseased': 'Diseased',
@@ -172,8 +174,6 @@ translations = {
         'fuzzy_input': 'Input Indicator Parameters',
         'fuzzy_predict': '🧪 Predict',
         'fuzzy_result': 'Risk Value: {risk_value}, Status: {risk_status}',
-        'Ich': 'Ichthyophthirius Disease',
-        'Tomont': 'Tomont',
         'category': 'Category',
         'confidence': 'Confidence',
         'location': 'Location',
@@ -745,7 +745,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# 侧边栏（修复模型选择KeyError）
+# 侧边栏（修复模型选择KeyError + 优化模型名称显示）
 with st.sidebar:
     st.markdown(f"### 🎓 {t('sidebar_university')}")
     st.markdown('<div id="svc-config">', unsafe_allow_html=True)
@@ -753,8 +753,12 @@ with st.sidebar:
     ws_url_override = base_url.replace("http://", "ws://").replace("https://", "wss://")
     st.divider()
     st.header(t('sidebar_model'))
-    # 仅显示已加载的模型
-    model_options = {"Ich": t('Ich'), "Tomont": t('Tomont'), "行为": t('行为')}
+    # 仅显示已加载的模型（使用优化后的翻译名称）
+    model_options = {
+        "Ich": t('Ich'), 
+        "Tomont": t('Tomont'), 
+        "行为": t('行为')
+    }
     available_models = {k: model_options.get(k, k) for k in MODELS.keys()}
     if not available_models:
         st.error("无可用模型，请检查模型文件路径！")
@@ -764,12 +768,12 @@ with st.sidebar:
         model_value = st.selectbox(
             t('sidebar_model_type'),
             options=list(available_models.keys()),
-            format_func=lambda x: f"{x}（{available_models[x]}）",
+            format_func=lambda x: available_models[x],  # 直接显示优化后的名称，移除括号
             index=list(available_models.keys()).index(default_model) if default_model in available_models else 0
         )
-    # 显示当前模型（容错）
+    # 显示当前模型（容错 + 优化显示）
     if model_value and model_value in MODELS:
-        st.markdown(f"<span class='badge'>{t('sidebar_current_model')} <b>{model_value}</b></span>",
+        st.markdown(f"<span class='badge'>{t('sidebar_current_model')} <b>{available_models[model_value]}</b></span>",
                     unsafe_allow_html=True)
     else:
         st.markdown("<span class='badge' style='color:red'>当前无可用模型</span>", unsafe_allow_html=True)
@@ -928,7 +932,7 @@ with tab_tracking:
 
     # 移除专属模型选择，复用左侧全局model_value
     if model_value and model_value in MODELS:
-        st.markdown(f"<div class='note'>当前使用模型：{model_value}（{t(model_value)}）</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='note'>当前使用模型：{available_models[model_value]}</div>", unsafe_allow_html=True)
     else:
         st.error("无可用模型，请先在左侧侧边栏选择有效模型！")
 
@@ -1029,11 +1033,11 @@ with tab_tracking:
             # 移除处理后视频预览，仅保留下载按钮
             if result["processed_video_path"] and Path(result["processed_video_path"]).exists():
                 st.markdown("### 📥 处理后视频下载")
-                # 下载按钮（文件名包含全局模型名）
+                # 下载按钮（文件名包含优化后的模型名）
                 st.download_button(
                     label="下载带轨迹的检测视频",
                     data=open(result["processed_video_path"], "rb").read(),
-                    file_name=f"traj_video_{model_value}_{int(time.time())}.mp4",
+                    file_name=f"traj_video_{available_models[model_value]}_{int(time.time())}.mp4",
                     mime="video/mp4",
                     use_container_width=True
                 )
@@ -1048,7 +1052,7 @@ with tab_tracking:
             # 失败提示
             st.error(f"分析失败：{result['message']}")
 
-# -------------------------------- 6) 模糊预测（改为下拉选项） --------------------------------
+# -------------------------------- 6) 模糊预测（下拉选项） --------------------------------
 with tab_fuzzy:
     st.markdown(f"#### {t('fuzzy_title')}")
     st.markdown(f"<div class='card'><b>{t('fuzzy_input')}</b></div>", unsafe_allow_html=True)
@@ -1112,4 +1116,5 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior_val, night_behavior_val, surface_features_val, pathogen_val)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
 
