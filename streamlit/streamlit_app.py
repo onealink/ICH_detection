@@ -23,14 +23,14 @@ import skfuzzy as fuzz
 from skfuzzy import control as ctrl
 import time
 
-# ====================== 语言配置（核心修改：更新轨迹分析相关翻译） ======================
+# ====================== 语言配置（完整中英文翻译字典） ======================
 if 'language' not in st.session_state:
     st.session_state.language = 'zh'  # 默认中文
 
-# 翻译字典（优化模型名称翻译 + 轨迹分析文本更新）
+# 翻译字典（完整覆盖所有文本，无硬编码中文）
 translations = {
     'zh': {
-        # 核心修改：轨迹分析相关翻译
+        # 核心轨迹分析翻译
         'tab_tracking': '📍 轨迹分析',
         'tracking_title': '鱼游动轨迹分析',
         'tracking_upload': '上传视频文件',
@@ -45,7 +45,33 @@ translations = {
         'daytime': '日间',
         'nighttime': '夜间',
         'no_fish_detected': '未检测到鱼类，无法计算轨迹数据',
-        # 模型名称优化翻译
+        # 模型相关翻译
+        'model_loaded': '成功加载模型：{k} -> {p}',
+        'model_not_found': '模型文件不存在：{p}（{k}模型）',
+        'model_switch': '模型{k}不存在，已切换为{default_model}',
+        'no_available_model': '无可用模型，请检查模型文件路径！',
+        'fallback_model': '所有模型加载失败，已兜底加载Ich模型',
+        # 轨迹分析控件翻译
+        'conf_threshold': '检测置信度阈值（降低以检测更多目标）',
+        'conf_threshold_help': '阈值越低，检测到的目标越多（可能包含误检）',
+        'max_frames': '最大分析帧数（0=无限制）',
+        'max_frames_help': '设置最大分析帧数，0表示分析全部帧',
+        'original_video': '原始视频',
+        'analysis_results': '分析结果',
+        'processed_video_download': '处理后视频下载',
+        'download_traj_video': '下载带轨迹的检测视频',
+        'video_format_help': '支持常见视频格式，建议时长不超过1分钟以保证分析速度',
+        # 错误提示翻译
+        'cannot_read_video': '无法读取视频',
+        'cannot_read_video_file': '无法读取视频文件',
+        'frame_inference_failed': '帧推理失败:',
+        'analysis_failed': '分析失败：',
+        'video_process_complete': '视频处理完成！',
+        # 建议文本翻译
+        'suggestions': '建议：1.降低置信度阈值 2.确认视频中有鱼类 3.检查模型类别是否匹配',
+        'model_label': '模型：',
+        'health_status_label': '健康程度：',
+        # 模型名称翻译
         'Ich': '多子小瓜虫体表病征',
         'Tomont': '多子小瓜虫包囊',
         '行为': '鱼游动行为分析',
@@ -59,7 +85,7 @@ translations = {
         'diseased': '患病',
         'pathogen_absent': '不存在',
         'pathogen_present': '存在',
-        # 原有翻译
+        # 原有基础翻译
         'page_title': 'YOLO病害检测',
         'header_title': '鱼类寄生虫病检测',
         'header_subtitle': '图片 / 批量 / 视频 / 摄像头 / 轨迹分析 / 模糊预测 — 一站式检测台',
@@ -105,12 +131,10 @@ translations = {
         'category': '类别',
         'confidence': '置信度',
         'location': '位置',
-        'path': '路径',
-        'model_not_found': '模型文件不存在：{p}（{k}模型）',
-        'model_loaded': '成功加载模型：{k} -> {p}'
+        'path': '路径'
     },
     'en': {
-        # 核心修改：轨迹分析相关翻译
+        # 核心轨迹分析翻译
         'tab_tracking': '📍 Trajectory Analysis',
         'tracking_title': 'Fish Swimming Trajectory Analysis',
         'tracking_upload': 'Upload Video File',
@@ -125,7 +149,33 @@ translations = {
         'daytime': 'Daytime',
         'nighttime': 'Nighttime',
         'no_fish_detected': 'No fish detected, cannot calculate trajectory data',
-        # 模型名称优化翻译（英文版）
+        # 模型相关翻译
+        'model_loaded': 'Successfully loaded model: {k} -> {p}',
+        'model_not_found': 'Model file not found: {p} ({k} model)',
+        'model_switch': 'Model {k} does not exist, switched to {default_model}',
+        'no_available_model': 'No available models, please check model file path!',
+        'fallback_model': 'All models failed to load, fallback to Ich model',
+        # 轨迹分析控件翻译
+        'conf_threshold': 'Detection Confidence Threshold (lower to detect more targets)',
+        'conf_threshold_help': 'Lower threshold detects more targets (may include false detections)',
+        'max_frames': 'Maximum Analysis Frames (0=unlimited)',
+        'max_frames_help': 'Set maximum frames to analyze, 0 means analyze all frames',
+        'original_video': 'Original Video',
+        'analysis_results': 'Analysis Results',
+        'processed_video_download': 'Processed Video Download',
+        'download_traj_video': 'Download video with trajectory detection',
+        'video_format_help': 'Supports common video formats, recommended duration ≤ 1 minute for speed',
+        # 错误提示翻译
+        'cannot_read_video': 'Cannot read video',
+        'cannot_read_video_file': 'Cannot read video file',
+        'frame_inference_failed': 'Frame inference failed:',
+        'analysis_failed': 'Analysis failed: ',
+        'video_process_complete': 'Video processing completed!',
+        # 建议文本翻译
+        'suggestions': 'Suggestions: 1.Lower confidence threshold 2.Confirm video contains fish 3.Check model category matching',
+        'model_label': 'Model: ',
+        'health_status_label': 'Health Status: ',
+        # 模型名称翻译
         'Ich': 'Ichthyophthirius Surface Symptoms',
         'Tomont': 'Ichthyophthirius Tomont',
         '行为': 'Fish Swimming Behavior Analysis',
@@ -139,7 +189,7 @@ translations = {
         'diseased': 'Diseased',
         'pathogen_absent': 'Absent',
         'pathogen_present': 'Present',
-        # 原有翻译
+        # 原有基础翻译
         'page_title': 'YOLO Disease Detection',
         'header_title': 'Fish Parasitic Disease Detection',
         'header_subtitle': 'Image / Batch / Video / Camera / Trajectory Analysis / Fuzzy Prediction — One-stop Detection Platform',
@@ -169,7 +219,7 @@ translations = {
         'video_upload': 'Upload Video',
         'video_run': '🚀 Start Video Detection',
         'video_disabled': 'OpenCV (cv2) not loaded in current cloud environment. Video processing disabled. Please run locally or install supported OpenCV version.',
-        'video_processing': 'Local video processing... (May be slow depending on CPU)',
+        'video_processing': 'Local video processing... (may be slow depending on CPU)',
         'video_download': 'Download Processed Video',
         'camera_title': '📷 Camera Detection (Photo Mode)',
         'camera_caption': 'Camera widget loads only after clicking "Open Camera"; click "Close Camera" to stop and hide.',
@@ -185,19 +235,15 @@ translations = {
         'category': 'Category',
         'confidence': 'Confidence',
         'location': 'Location',
-        'path': 'Path',
-        'model_not_found': 'Model file not found: {p} ({k} model)',
-        'model_loaded': 'Successfully loaded model: {k} -> {p}'
+        'path': 'Path'
     }
 }
-
 
 # 获取当前语言翻译
 def t(key):
     return translations[st.session_state.language].get(key, key)
 
-
-# ====================== 健康程度计算函数（核心新增） ======================
+# ====================== 健康程度计算函数 ======================
 def get_health_status(average_speed: float, time_period: str) -> str:
     """
     根据平均速度和时间段判断健康程度
@@ -234,11 +280,10 @@ def get_health_status(average_speed: float, time_period: str) -> str:
         else:
             return diseased
 
-
 # ====================== 页面配置 ======================
 st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 
-# ====================== 模型加载（修复KeyError + 新增行为模型） ======================
+# ====================== 模型加载（修复硬编码中文） ======================
 BASE_DIR = Path(__file__).parent
 WEIGHTS = BASE_DIR / "best.pt"  # Ich模型
 TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"  # Tomont模型
@@ -247,7 +292,6 @@ IMG_DIR = BASE_DIR / "img"
 # 模型路径字典（包含行为模型）
 MODEL_PATHS = {"Ich": str(WEIGHTS), "Tomont": str(TOMONT_WEIGHTS), "行为": str(BEHAVIOR_WEIGHTS)}
 DEFAULT_CONF = 0.6  # 默认置信度
-
 
 @st.cache_resource
 def load_models():
@@ -258,23 +302,21 @@ def load_models():
         else:
             try:
                 models[k] = YOLO(p)
-                st.success(t('model_loaded').format(k=k, p=p))
+                st.success(t('model_loaded').format(k=k, p=p))  # 替换硬编码中文
             except Exception as e:
-                st.error(f"加载模型{k}失败：{str(e)}")
+                st.error(f"{t('model_loaded').split(':')[0]} {k} failed: {str(e)}")  # 兼容错误提示
     # 兜底逻辑：无任何模型加载成功时，尝试加载Ich
     if not models:
         if Path(WEIGHTS).exists():
             models["Ich"] = YOLO(WEIGHTS)
-            st.warning("所有模型加载失败，已兜底加载Ich模型")
+            st.warning(t('fallback_model'))  # 替换硬编码中文
         else:
-            st.error("所有模型文件均不存在，无法运行！")
+            st.error(t('no_available_model'))  # 替换硬编码中文
     return models
-
 
 MODELS = load_models()
 
-
-# ====================== 核心工具函数（修复KeyError + 轨迹跟踪优化） ======================
+# ====================== 核心工具函数（修复硬编码中文） ======================
 def detections_to_df(res) -> pd.DataFrame:
     if hasattr(res, "boxes") and hasattr(res, "names"):
         rows = []
@@ -305,7 +347,6 @@ def detections_to_df(res) -> pd.DataFrame:
         return res
     return pd.DataFrame()
 
-
 def predict_on_image(img_input, model_key: str, conf: float | None = None):
     if isinstance(img_input, (bytes, bytearray)):
         pil_img = Image.open(io.BytesIO(img_input)).convert("RGB")
@@ -329,10 +370,11 @@ def predict_on_image(img_input, model_key: str, conf: float | None = None):
     c = float(conf) if conf is not None else DEFAULT_CONF
     # 修复KeyError：检查模型是否存在
     if model_key not in MODELS:
-        st.warning(f"模型{model_key}不存在，已切换为Ich模型")
-        model_key = "Ich" if "Ich" in MODELS else list(MODELS.keys())[0] if MODELS else None
+        default_model = list(MODELS.keys())[0] if MODELS else None
+        st.warning(t('model_switch').format(k=model_key, default_model=default_model))  # 替换硬编码中文
+        model_key = "Ich" if "Ich" in MODELS else default_model
     if not model_key:
-        raise RuntimeError("无任何可用模型！")
+        raise RuntimeError(t('no_available_model'))  # 替换硬编码中文
     r = MODELS[model_key].predict(source=pil_img, conf=c, imgsz=640, verbose=False)[0]
     im_bgr = r.plot()
     im_rgb = im_bgr[..., ::-1]
@@ -340,16 +382,15 @@ def predict_on_image(img_input, model_key: str, conf: float | None = None):
     df = detections_to_df(r)
     return vis_pil, df
 
-
-# 原有视频处理函数（修复KeyError）
+# 原有视频处理函数（修复硬编码中文）
 def process_video(video_bytes: bytes, model_key: str, conf: float | None = None, max_frames: int | None = None) -> Path:
     if not CV2_OK:
         raise RuntimeError(t("video_disabled"))
     in_path = Path("input_tmp.mp4");
     in_path.write_bytes(video_bytes)
     cap = cv2.VideoCapture(str(in_path))
-    if not cap.isOpened(): raise RuntimeError(
-        "无法读取视频" if st.session_state.language == 'zh' else "Cannot read video")
+    if not cap.isOpened(): 
+        raise RuntimeError(t("cannot_read_video"))  # 替换硬编码中文
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 25
     w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -365,10 +406,11 @@ def process_video(video_bytes: bytes, model_key: str, conf: float | None = None,
         c = float(conf) if conf is not None else DEFAULT_CONF
         # 修复KeyError：检查模型是否存在
         if model_key not in MODELS:
-            st.warning(f"模型{model_key}不存在，已切换为Ich模型")
-            model_key = "Ich" if "Ich" in MODELS else list(MODELS.keys())[0] if MODELS else None
+            default_model = list(MODELS.keys())[0] if MODELS else None
+            st.warning(t('model_switch').format(k=model_key, default_model=default_model))  # 替换硬编码中文
+            model_key = "Ich" if "Ich" in MODELS else default_model
         if not model_key:
-            raise RuntimeError("无任何可用模型！")
+            raise RuntimeError(t('no_available_model'))  # 替换硬编码中文
         r = MODELS[model_key].predict(source=frame, conf=c, imgsz=640, verbose=False)[0]
         vw.write(r.plot())
 
@@ -376,8 +418,7 @@ def process_video(video_bytes: bytes, model_key: str, conf: float | None = None,
     vw.release()
     return out_path
 
-
-# 轨迹分析核心函数（支持自定义模型）
+# 轨迹分析核心函数（修复硬编码中文）
 def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = DEFAULT_CONF,
                               max_frames: int = None) -> dict:
     """
@@ -397,12 +438,13 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
 
     # 校验模型是否存在
     if model_key not in MODELS:
-        st.warning(f"模型{model_key}不存在，已切换为{list(MODELS.keys())[0]}")
-        model_key = list(MODELS.keys())[0] if MODELS else None
+        default_model = list(MODELS.keys())[0] if MODELS else None
+        st.warning(t('model_switch').format(k=model_key, default_model=default_model))  # 替换硬编码中文
+        model_key = default_model
     if not model_key:
         return {
             "success": False,
-            "message": "无可用模型！",
+            "message": t('no_available_model'),  # 替换硬编码中文
             "total_distance": 0,
             "average_speed": 0,
             "video_duration": 0,
@@ -437,7 +479,7 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
     if not cap.isOpened():
         return {
             "success": False,
-            "message": "无法读取视频文件" if st.session_state.language == 'zh' else "Cannot read video file",
+            "message": t('cannot_read_video_file'),  # 替换硬编码中文
             "total_distance": 0,
             "average_speed": 0,
             "video_duration": 0,
@@ -486,7 +528,7 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
             processed_video_path.unlink(missing_ok=True)
             return {
                 "success": False,
-                "message": f"帧推理失败: {str(e)}",
+                "message": f"{t('frame_inference_failed')} {str(e)}",  # 替换硬编码中文
                 "total_distance": 0,
                 "average_speed": 0,
                 "video_duration": 0,
@@ -541,7 +583,7 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
     if total_distance == 0:
         return {
             "success": True,
-            "message": f"{t('no_fish_detected')} | 模型：{model_key} | 建议：1.降低置信度阈值 2.确认视频中有鱼类 3.检查模型类别是否匹配",
+            "message": f"{t('no_fish_detected')} | {t('model_label')}{model_key} | {t('suggestions')}",  # 替换硬编码中文
             "total_distance": 0,
             "average_speed": 0,
             "video_duration": round(video_duration, 2),
@@ -551,7 +593,7 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
 
     return {
         "success": True,
-        "message": f"轨迹分析完成（使用模型：{model_key}）",
+        "message": f"{t('tracking_processing').replace('...', 'completed')} ({t('model_label')}{model_key})",  # 动态生成完成提示
         "total_distance": round(total_distance, 2),
         "average_speed": round(average_speed, 2),
         "video_duration": round(video_duration, 2),
@@ -559,20 +601,17 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
         "processed_video_path": str(processed_video_path) if processed_video_path.exists() else ""
     }
 
-
 def save_table_to_excel(df: pd.DataFrame, filename: str) -> Path:
     out = Path(filename).with_suffix(".xlsx")
     with pd.ExcelWriter(out, engine="xlsxwriter") as w:
         df.to_excel(w, sheet_name="detections" if st.session_state.language == 'zh' else "Detections", index=False)
     return out
 
-
 def zip_files(files: list[Path], out_zip: Path) -> Path:
     with zipfile.ZipFile(out_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for f in files:
             if f.exists(): zf.write(f, arcname=f.name)
     return out_zip
-
 
 # ========= 模糊预测 =========
 @st.cache_resource
@@ -629,7 +668,6 @@ def build_fuzzy_sim():
 
     return ctrl.ControlSystemSimulation(ctrl.ControlSystem(rules))
 
-
 def fuzzy_predict(day_val: float, night_val: float, surf_val: float, patho_val: float) -> dict:
     sim = build_fuzzy_sim()
     sim.input['day'] = day_val
@@ -643,7 +681,6 @@ def fuzzy_predict(day_val: float, night_val: float, surf_val: float, patho_val: 
     else:
         status = t("healthy") if v < 1.5 else (t("subhealthy") if v < 2.5 else t("diseased"))
     return {"risk_value": round(v, 1), "risk_status": status}
-
 
 # ========================= 全局样式 =========================
 st.markdown("""
@@ -794,7 +831,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# 侧边栏（修复模型选择KeyError + 优化模型名称显示）
+# 侧边栏（修复硬编码中文）
 with st.sidebar:
     st.markdown(f"### 🎓 {t('sidebar_university')}")
     st.markdown('<div id="svc-config">', unsafe_allow_html=True)
@@ -810,14 +847,14 @@ with st.sidebar:
     }
     available_models = {k: model_options.get(k, k) for k in MODELS.keys()}
     if not available_models:
-        st.error("无可用模型，请检查模型文件路径！")
+        st.error(t('no_available_model'))  # 替换硬编码中文
         model_value = None
     else:
         default_model = "Ich" if "Ich" in available_models else list(available_models.keys())[0]
         model_value = st.selectbox(
             t('sidebar_model_type'),
             options=list(available_models.keys()),
-            format_func=lambda x: available_models[x],  # 直接显示优化后的名称，移除括号
+            format_func=lambda x: available_models[x],
             index=list(available_models.keys()).index(default_model) if default_model in available_models else 0
         )
     # 显示当前模型（容错 + 优化显示）
@@ -825,7 +862,7 @@ with st.sidebar:
         st.markdown(f"<span class='badge'>{t('sidebar_current_model')} <b>{available_models[model_value]}</b></span>",
                     unsafe_allow_html=True)
     else:
-        st.markdown("<span class='badge' style='color:red'>当前无可用模型</span>", unsafe_allow_html=True)
+        st.markdown(f"<span class='badge' style='color:red'>{t('no_available_model')}</span>", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ========================= 标签页 =========================
@@ -853,7 +890,7 @@ with tab_img:
         run_single = st.button(t('image_run'), type="primary", use_container_width=True,
                                disabled=img_file is None or model_value is None)
         if run_single and img_file:
-            with st.spinner("本地模型推理中..." if st.session_state.language == 'zh' else "Local model inferencing..."):
+            with st.spinner(t('batch_processing').replace('：', '') if st.session_state.language == 'zh' else t('batch_processing')):
                 det_img, df = predict_on_image(img_file.getvalue(), model_value)
             st.image(det_img, caption=t('image_result'), use_column_width=True)
             if not df.empty:
@@ -925,7 +962,7 @@ with tab_folder:
         status.empty()
         progress.empty()
 
-# -------------------------------- 3) 视频检测（移除预览，仅保留下载） --------------------------------
+# -------------------------------- 3) 视频检测（修复硬编码中文） --------------------------------
 with tab_video:
     st.markdown(f"#### {t('tab_video')}")
     vid_file = st.file_uploader(
@@ -939,7 +976,7 @@ with tab_video:
         with st.spinner(t('video_processing')):
             out_path = process_video(vid_file.getvalue(), model_value, max_frames=None)
         # 移除视频预览，仅保留下载按钮
-        st.success("视频处理完成！")
+        st.success(t('video_process_complete'))  # 替换硬编码中文
         st.download_button(
             t('video_download'),
             data=open(out_path, "rb").read(),
@@ -969,64 +1006,65 @@ with tab_camera:
         snap = st.camera_input(t('camera_shot'), key="cam_shot")
         go = st.button(t('camera_detect'), type="primary", disabled=(snap is None or model_value is None))
         if go and snap is not None:
-            with st.spinner("本地模型推理中..." if st.session_state.language == 'zh' else "Local model inferencing..."):
+            with st.spinner(t('batch_processing').replace('：', '') if st.session_state.language == 'zh' else t('batch_processing')):
                 det_img, df = predict_on_image(snap.getvalue(), model_value)
             st.image(det_img, caption=t('image_result'), use_column_width=True)
             if not df.empty:
                 st.dataframe(df, use_container_width=True)
 
-# -------------------------- 5) 轨迹分析（核心修改：新增时间段选择、健康程度展示） --------------------------
+# -------------------------- 5) 轨迹分析（修复所有硬编码中文） --------------------------
 with tab_tracking:
-    # 核心修改：添加小图标 + 更新标题文本
+    # 添加小图标 + 更新标题文本
     st.markdown(f"#### 🐠 {t('tracking_title')}")
 
     # 移除专属模型选择，复用左侧全局model_value
     if model_value and model_value in MODELS:
-        st.markdown(f"<div class='note'>当前使用模型：{available_models[model_value]}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='note'>{t('sidebar_current_model')} {available_models[model_value]}</div>", unsafe_allow_html=True)
     else:
-        st.error("无可用模型，请先在左侧侧边栏选择有效模型！")
+        st.error(t('no_available_model'))  # 替换硬编码中文
 
     # 视频上传
     vid_file = st.file_uploader(
         t('tracking_upload'),
         type=["mp4", "mov", "avi", "mkv"],
         key="tracking_video_file",
-        help="支持常见视频格式，建议时长不超过1分钟以保证分析速度"
+        help=t('video_format_help')  # 替换硬编码中文
     )
 
     # 展示原始视频（保留原始视频预览，仅移除处理后的视频预览）
     if vid_file:
-        st.markdown("### 🎬 原始视频")
+        st.markdown(f"### 🎬 {t('original_video')}")  # 替换硬编码中文
         st.video(vid_file)
 
-    # 置信度阈值（降低默认值）
+    # 置信度阈值（降低默认值）- 替换硬编码中文
     conf_threshold = st.slider(
-        "检测置信度阈值（降低以检测更多目标）",
+        t('conf_threshold'),
         min_value=0.05,
         max_value=1.0,
         value=0.3,
         step=0.05,
         key="tracking_conf",
-        help="阈值越低，检测到的目标越多（可能包含误检）"
+        help=t('conf_threshold_help')  # 替换硬编码中文
     )
 
-    # 最大帧数限制
+    # 最大分析帧数限制 - 替换硬编码中文
     max_frames = st.number_input(
-        "最大分析帧数（0=无限制）",
+        t('max_frames'),
         min_value=0,
         max_value=10000,
         value=0,
         step=100,
-        key="tracking_max_frames"
+        key="tracking_max_frames",
+        help=t('max_frames_help')  # 替换硬编码中文
     )
 
-    # 核心新增：日间/夜间选择（在开始按钮上方）
+    # 日间/夜间选择（在开始按钮上方）
     time_period = st.selectbox(
         t("time_period"),
         options=[t("daytime"), t("nighttime")],
         index=0,
         key="tracking_time_period",
-        help="选择分析的时间段，用于判断健康程度"
+        help=t("time_period") + " - " + t('suggestions').split(':')[0]  # 补充帮助文本
     )
 
     # 开始分析按钮（禁用条件改为全局model_value）
@@ -1046,18 +1084,18 @@ with tab_tracking:
         with st.spinner(t('tracking_processing')):
             result = calculate_fish_trajectory(
                 video_bytes=vid_file.getvalue(),
-                model_key=model_value,  # 使用左侧全局模型
+                model_key=model_value,
                 conf=conf_threshold,
                 max_frames=max_frames if max_frames > 0 else None
             )
 
         # 展示结果
-        st.markdown("### 📊 分析结果")
+        st.markdown(f"### 📊 {t('analysis_results')}")  # 替换硬编码中文
         if result["success"]:
             # 计算健康程度
             health_status = get_health_status(result["average_speed"], time_period)
             
-            # 成功结果展示（核心修改：增加健康程度列）
+            # 成功结果展示
             col1, col2, col3, col4, col5 = st.columns(5)
 
             with col1:
@@ -1092,13 +1130,13 @@ with tab_tracking:
                 </div>
                 """, unsafe_allow_html=True)
 
-            # 核心新增：健康程度展示（特殊样式）
+            # 健康程度展示（特殊样式）
             with col5:
                 # 根据健康状态添加不同样式类
                 status_class = ""
-                if health_status in ["健康", "Healthy"]:
+                if health_status in [t("healthy"), "健康", "Healthy"]:
                     status_class = "healthy"
-                elif health_status in ["亚健康", "Subhealthy"]:
+                elif health_status in [t("subhealthy"), "亚健康", "Subhealthy"]:
                     status_class = "subhealthy"
                 else:
                     status_class = "diseased"
@@ -1112,10 +1150,10 @@ with tab_tracking:
 
             # 移除处理后视频预览，仅保留下载按钮
             if result["processed_video_path"] and Path(result["processed_video_path"]).exists():
-                st.markdown("### 📥 处理后视频下载")
+                st.markdown(f"### 📥 {t('processed_video_download')}")  # 替换硬编码中文
                 # 下载按钮（文件名包含优化后的模型名）
                 st.download_button(
-                    label="下载带轨迹的检测视频",
+                    label=t('download_traj_video'),  # 替换硬编码中文
                     data=open(result["processed_video_path"], "rb").read(),
                     file_name=f"traj_video_{available_models[model_value]}_{int(time.time())}.mp4",
                     mime="video/mp4",
@@ -1126,11 +1164,11 @@ with tab_tracking:
             if result["total_distance"] == 0:
                 st.info(result["message"])
             else:
-                st.success(f"{result['message']} | {t('health_status')}：{health_status}")
+                st.success(f"{result['message']} | {t('health_status_label')}{health_status}")  # 替换硬编码中文
 
         else:
-            # 失败提示
-            st.error(f"分析失败：{result['message']}")
+            # 失败提示 - 替换硬编码中文
+            st.error(f"{t('analysis_failed')}{result['message']}")
 
 # -------------------------------- 6) 模糊预测（下拉选项） --------------------------------
 with tab_fuzzy:
@@ -1159,7 +1197,7 @@ with tab_fuzzy:
         day_behavior_label = st.selectbox(
             t('fuzzy_day'),
             options=list(day_night_options.keys()),
-            index=2,  # 默认选中患病
+            index=2,
             key="day_behavior"
         )
         day_behavior_val = day_night_options[day_behavior_label]
@@ -1168,7 +1206,7 @@ with tab_fuzzy:
         night_behavior_label = st.selectbox(
             t('fuzzy_night'),
             options=list(day_night_options.keys()),
-            index=0,  # 默认选中健康
+            index=0,
             key="night_behavior"
         )
         night_behavior_val = day_night_options[night_behavior_label]
@@ -1178,7 +1216,7 @@ with tab_fuzzy:
         surface_features_label = st.selectbox(
             t('fuzzy_surface'),
             options=list(surface_options.keys()),
-            index=1,  # 默认选中患病
+            index=1,
             key="surface_features"
         )
         surface_features_val = surface_options[surface_features_label]
@@ -1187,7 +1225,7 @@ with tab_fuzzy:
         pathogen_label = st.selectbox(
             t('fuzzy_pathogen'),
             options=list(pathogen_options.keys()),
-            index=1,  # 默认选中存在
+            index=1,
             key="pathogen_existence"
         )
         pathogen_val = pathogen_options[pathogen_label]
