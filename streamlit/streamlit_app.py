@@ -287,7 +287,7 @@ st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 BASE_DIR = Path(__file__).parent
 WEIGHTS = BASE_DIR / "best.pt"  # Ich模型
 TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"  # Tomont模型
-BEHAVIOR_WEIGHTS = BASE_DIR / "behvior.best.pt"  # 行为分析模型（新增）
+BEHAVIOR_WEIGHTS = BASE_DIR / "behavior.best.pt"  # 行为分析模型（新增）
 IMG_DIR = BASE_DIR / "img"
 # 模型路径字典（关键修改：将"行为"改为"Behavior"）
 MODEL_PATHS = {"Ich": str(WEIGHTS), "Tomont": str(TOMONT_WEIGHTS), "Behavior": str(BEHAVIOR_WEIGHTS)}
@@ -1235,5 +1235,6 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior_val, night_behavior_val, surface_features_val, pathogen_val)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
 
 
