@@ -23,16 +23,16 @@ import skfuzzy as fuzz
 from skfuzzy import control as ctrl
 import time
 
-# ====================== 语言配置（新增轨迹跟踪翻译 + 模糊选项翻译 + 模型名称优化） ======================
+# ====================== 语言配置（核心修改：更新轨迹分析相关翻译） ======================
 if 'language' not in st.session_state:
     st.session_state.language = 'zh'  # 默认中文
 
-# 翻译字典（优化模型名称翻译）
+# 翻译字典（优化模型名称翻译 + 轨迹分析文本更新）
 translations = {
     'zh': {
-        # 原有翻译保留，优化模型名称翻译
-        'tab_tracking': '📍 轨迹跟踪',
-        'tracking_title': '金鱼运动轨迹分析',
+        # 核心修改：轨迹分析相关翻译
+        'tab_tracking': '📍 轨迹分析',
+        'tracking_title': '鱼游动轨迹分析',
         'tracking_upload': '上传视频文件',
         'tracking_run': '🚀 开始轨迹分析',
         'tracking_processing': '正在分析视频轨迹...',
@@ -40,7 +40,11 @@ translations = {
         'average_speed': '平均运动速度（像素/秒）',
         'video_duration': '视频时长（秒）',
         'total_frames': '总帧数',
-        'no_fish_detected': '未检测到金鱼，无法计算轨迹数据',
+        'health_status': '健康程度',
+        'time_period': '分析时间段',
+        'daytime': '日间',
+        'nighttime': '夜间',
+        'no_fish_detected': '未检测到鱼类，无法计算轨迹数据',
         # 模型名称优化翻译
         'Ich': '多子小瓜虫体表病征',
         'Tomont': '多子小瓜虫包囊',
@@ -58,7 +62,7 @@ translations = {
         # 原有翻译
         'page_title': 'YOLO病害检测',
         'header_title': '鱼类寄生虫病检测',
-        'header_subtitle': '图片 / 批量 / 视频 / 摄像头 / 轨迹跟踪 / 模糊预测 — 一站式检测台',
+        'header_subtitle': '图片 / 批量 / 视频 / 摄像头 / 轨迹分析 / 模糊预测 — 一站式检测台',
         'sidebar_university': '宁波大学 · 病害实验室',
         'sidebar_model': '🧠 模型与参数',
         'sidebar_model_type': '模型类型',
@@ -106,9 +110,9 @@ translations = {
         'model_loaded': '成功加载模型：{k} -> {p}'
     },
     'en': {
-        # 原有翻译保留，优化模型名称翻译
-        'tab_tracking': '📍 Trajectory Tracking',
-        'tracking_title': 'Goldfish Motion Trajectory Analysis',
+        # 核心修改：轨迹分析相关翻译
+        'tab_tracking': '📍 Trajectory Analysis',
+        'tracking_title': 'Fish Swimming Trajectory Analysis',
         'tracking_upload': 'Upload Video File',
         'tracking_run': '🚀 Start Trajectory Analysis',
         'tracking_processing': 'Analyzing video trajectory...',
@@ -116,7 +120,11 @@ translations = {
         'average_speed': 'Average Movement Speed (pixels/sec)',
         'video_duration': 'Video Duration (sec)',
         'total_frames': 'Total Frames',
-        'no_fish_detected': 'No goldfish detected, cannot calculate trajectory data',
+        'health_status': 'Health Status',
+        'time_period': 'Analysis Time Period',
+        'daytime': 'Daytime',
+        'nighttime': 'Nighttime',
+        'no_fish_detected': 'No fish detected, cannot calculate trajectory data',
         # 模型名称优化翻译（英文版）
         'Ich': 'Ichthyophthirius Surface Symptoms',
         'Tomont': 'Ichthyophthirius Tomont',
@@ -134,7 +142,7 @@ translations = {
         # 原有翻译
         'page_title': 'YOLO Disease Detection',
         'header_title': 'Fish Parasitic Disease Detection',
-        'header_subtitle': 'Image / Batch / Video / Camera / Trajectory Tracking / Fuzzy Prediction — One-stop Detection Platform',
+        'header_subtitle': 'Image / Batch / Video / Camera / Trajectory Analysis / Fuzzy Prediction — One-stop Detection Platform',
         'sidebar_university': 'Ningbo University · Disease Laboratory',
         'sidebar_model': '🧠 Model & Parameters',
         'sidebar_model_type': 'Model Type',
@@ -187,6 +195,44 @@ translations = {
 # 获取当前语言翻译
 def t(key):
     return translations[st.session_state.language].get(key, key)
+
+
+# ====================== 健康程度计算函数（核心新增） ======================
+def get_health_status(average_speed: float, time_period: str) -> str:
+    """
+    根据平均速度和时间段判断健康程度
+    :param average_speed: 平均运动速度（像素/秒）
+    :param time_period: 时间段（日间/Daytime 或 夜间/Nighttime）
+    :return: 健康程度描述
+    """
+    # 统一判断逻辑（兼容中英文）
+    is_daytime = time_period in [t("daytime"), "日间", "Daytime"]
+    
+    if st.session_state.language == 'zh':
+        healthy = "健康"
+        subhealthy = "亚健康"
+        diseased = "患病"
+    else:
+        healthy = "Healthy"
+        subhealthy = "Subhealthy"
+        diseased = "Diseased"
+    
+    # 日间判断规则
+    if is_daytime:
+        if average_speed > 15:
+            return healthy
+        elif 10 <= average_speed <= 15:
+            return subhealthy
+        else:
+            return diseased
+    # 夜间判断规则
+    else:
+        if average_speed > 10:
+            return healthy
+        elif 5 <= average_speed <= 10:
+            return subhealthy
+        else:
+            return diseased
 
 
 # ====================== 页面配置 ======================
@@ -335,7 +381,7 @@ def process_video(video_bytes: bytes, model_key: str, conf: float | None = None,
 def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = DEFAULT_CONF,
                               max_frames: int = None) -> dict:
     """
-    分析视频中金鱼的运动轨迹（支持指定模型）
+    分析视频中鱼类的运动轨迹（支持指定模型）
     :param model_key: 要使用的模型名称
     """
     if not CV2_OK:
@@ -373,7 +419,7 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
     # 动态匹配当前模型的类别名（适配不同模型）
     current_model = MODELS[model_key]
     model_class_names = current_model.names
-    fish_keywords = ["healthy", "subhealthy", "diseased", "健康", "亚健康", "患病", "金鱼", "fish"]
+    fish_keywords = ["healthy", "subhealthy", "diseased", "健康", "亚健康", "患病", "鱼", "fish"]
     fish_categories = set()
     for cls_idx, cls_name in model_class_names.items():
         if any(keyword.lower() in cls_name.lower() for keyword in fish_keywords):
@@ -451,18 +497,7 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
         # 绘制检测框
         frame_with_detect = r.plot()
 
-        # 【已删除】调试信息：第一帧打印检测类别
-        # 移除了以下这段调试代码
-        # if total_frames == 1:
-        #     detected_classes = []
-        #     if hasattr(r, "boxes") and len(r.boxes) > 0:
-        #         for box in r.boxes:
-        #             cls_idx = int(box.cls.item())
-        #             cls_name = r.names.get(cls_idx, f"未知类别_{cls_idx}")
-        #             detected_classes.append(cls_name)
-        #     st.info(f"模型[{model_key}]检测到的类别（第一帧）：{detected_classes} | 目标过滤类别：{fish_categories}")
-
-        # 提取当前帧金鱼中心坐标
+        # 提取当前帧鱼类中心坐标
         current_center = None
         max_conf = 0.0
         if hasattr(r, "boxes") and len(r.boxes) > 0:
@@ -506,7 +541,7 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
     if total_distance == 0:
         return {
             "success": True,
-            "message": f"{t('no_fish_detected')} | 模型：{model_key} | 建议：1.降低置信度阈值 2.确认视频中有金鱼 3.检查模型类别是否匹配",
+            "message": f"{t('no_fish_detected')} | 模型：{model_key} | 建议：1.降低置信度阈值 2.确认视频中有鱼类 3.检查模型类别是否匹配",
             "total_distance": 0,
             "average_speed": 0,
             "video_duration": round(video_duration, 2),
@@ -670,6 +705,19 @@ st.markdown("""
   font-weight: 600;
   color: #2563eb;
 }
+/* 健康程度卡片特殊样式 */
+.health-card {
+  background: #e8f4f8;
+  border: 1px solid #4299e1;
+}
+.health-status {
+  font-size: 20px;
+  font-weight: 700;
+  color: #2d3748;
+}
+.healthy { color: #48bb78 !important; }
+.subhealthy { color: #ed8936 !important; }
+.diseased { color: #e53e3e !important; }
 
 /* 下拉选项样式优化 */
 .stSelectbox > div > div {
@@ -927,9 +975,10 @@ with tab_camera:
             if not df.empty:
                 st.dataframe(df, use_container_width=True)
 
-# -------------------------- 5) 轨迹跟踪（复用左侧全局模型，移除视频预览） --------------------------
+# -------------------------- 5) 轨迹分析（核心修改：新增时间段选择、健康程度展示） --------------------------
 with tab_tracking:
-    st.markdown(f"#### {t('tracking_title')}")
+    # 核心修改：添加小图标 + 更新标题文本
+    st.markdown(f"#### 🐠 {t('tracking_title')}")
 
     # 移除专属模型选择，复用左侧全局model_value
     if model_value and model_value in MODELS:
@@ -971,6 +1020,15 @@ with tab_tracking:
         key="tracking_max_frames"
     )
 
+    # 核心新增：日间/夜间选择（在开始按钮上方）
+    time_period = st.selectbox(
+        t("time_period"),
+        options=[t("daytime"), t("nighttime")],
+        index=0,
+        key="tracking_time_period",
+        help="选择分析的时间段，用于判断健康程度"
+    )
+
     # 开始分析按钮（禁用条件改为全局model_value）
     run_tracking = st.button(
         t('tracking_run'),
@@ -996,8 +1054,11 @@ with tab_tracking:
         # 展示结果
         st.markdown("### 📊 分析结果")
         if result["success"]:
-            # 成功结果展示
-            col1, col2, col3, col4 = st.columns(4)
+            # 计算健康程度
+            health_status = get_health_status(result["average_speed"], time_period)
+            
+            # 成功结果展示（核心修改：增加健康程度列）
+            col1, col2, col3, col4, col5 = st.columns(5)
 
             with col1:
                 st.markdown(f"""
@@ -1031,6 +1092,24 @@ with tab_tracking:
                 </div>
                 """, unsafe_allow_html=True)
 
+            # 核心新增：健康程度展示（特殊样式）
+            with col5:
+                # 根据健康状态添加不同样式类
+                status_class = ""
+                if health_status in ["健康", "Healthy"]:
+                    status_class = "healthy"
+                elif health_status in ["亚健康", "Subhealthy"]:
+                    status_class = "subhealthy"
+                else:
+                    status_class = "diseased"
+                
+                st.markdown(f"""
+                <div class="traj-card health-card">
+                    <p>{t('health_status')}</p>
+                    <p class="traj-metric health-status {status_class}">{health_status}</p>
+                </div>
+                """, unsafe_allow_html=True)
+
             # 移除处理后视频预览，仅保留下载按钮
             if result["processed_video_path"] and Path(result["processed_video_path"]).exists():
                 st.markdown("### 📥 处理后视频下载")
@@ -1047,7 +1126,7 @@ with tab_tracking:
             if result["total_distance"] == 0:
                 st.info(result["message"])
             else:
-                st.success(result["message"])
+                st.success(f"{result['message']} | {t('health_status')}：{health_status}")
 
         else:
             # 失败提示
@@ -1117,6 +1196,3 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior_val, night_behavior_val, surface_features_val, pathogen_val)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
-
-
-
