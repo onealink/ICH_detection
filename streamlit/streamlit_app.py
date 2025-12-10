@@ -23,11 +23,11 @@ import skfuzzy as fuzz
 from skfuzzy import control as ctrl
 import time
 
-# ====================== 语言配置（新增轨迹跟踪翻译） ======================
+# ====================== 语言配置（新增轨迹跟踪翻译 + 模糊选项翻译） ======================
 if 'language' not in st.session_state:
     st.session_state.language = 'zh'  # 默认中文
 
-# 翻译字典（新增轨迹跟踪+行为模型相关字段）
+# 翻译字典（新增模糊选项翻译）
 translations = {
     'zh': {
         # 原有翻译保留，新增以下字段
@@ -43,6 +43,16 @@ translations = {
         'no_fish_detected': '未检测到金鱼，无法计算轨迹数据',
         # 新增行为模型翻译
         '行为': '行为分析模型',
+        # 模糊预测新增翻译
+        'fuzzy_day': '日间行为',
+        'fuzzy_night': '夜间行为',
+        'fuzzy_surface': '体表特征',
+        'fuzzy_pathogen': '病原存在性',  # 改名
+        'healthy': '健康',
+        'subhealthy': '亚健康',
+        'diseased': '患病',
+        'pathogen_absent': '不存在',
+        'pathogen_present': '存在',
         # 原有翻译
         'page_title': 'YOLO病害检测',
         'header_title': '鱼类寄生虫病检测',
@@ -84,17 +94,10 @@ translations = {
         'camera_detect': '检测此照片',
         'fuzzy_title': '🧮 模糊预测',
         'fuzzy_input': '输入指标参数',
-        'fuzzy_day': '日间行为（1~3）',
-        'fuzzy_night': '夜间行为（1~3）',
-        'fuzzy_surface': '体表特征（1~3）',
-        'fuzzy_pathogen': '病原特征（1~3）',
         'fuzzy_predict': '🧪 预测',
         'fuzzy_result': '风险值: {risk_value}，状态: {risk_status}',
         'Ich': '多子小瓜虫病',
         'Tomont': '包囊',
-        'healthy': '健康',
-        'subhealthy': '亚健康',
-        'diseased': '患病',
         'category': '类别',
         'confidence': '置信度',
         'location': '位置',
@@ -116,6 +119,16 @@ translations = {
         'no_fish_detected': 'No goldfish detected, cannot calculate trajectory data',
         # 新增行为模型翻译
         '行为': 'Behavior Analysis Model',
+        # 模糊预测新增翻译
+        'fuzzy_day': 'Day Behavior',
+        'fuzzy_night': 'Night Behavior',
+        'fuzzy_surface': 'Surface Features',
+        'fuzzy_pathogen': 'Pathogen Existence',  # 改名
+        'healthy': 'Healthy',
+        'subhealthy': 'Subhealthy',
+        'diseased': 'Diseased',
+        'pathogen_absent': 'Absent',
+        'pathogen_present': 'Present',
         # 原有翻译
         'page_title': 'YOLO Disease Detection',
         'header_title': 'Fish Parasitic Disease Detection',
@@ -157,17 +170,10 @@ translations = {
         'camera_detect': 'Detect This Photo',
         'fuzzy_title': '🧮 Fuzzy Prediction',
         'fuzzy_input': 'Input Indicator Parameters',
-        'fuzzy_day': 'Day Behavior (1~3)',
-        'fuzzy_night': 'Night Behavior (1~3)',
-        'fuzzy_surface': 'Surface Features (1~3)',
-        'fuzzy_pathogen': 'Pathogen Features (1~3)',
         'fuzzy_predict': '🧪 Predict',
         'fuzzy_result': 'Risk Value: {risk_value}, Status: {risk_status}',
         'Ich': 'Ichthyophthirius Disease',
         'Tomont': 'Tomont',
-        'healthy': 'Healthy',
-        'subhealthy': 'Subhealthy',
-        'diseased': 'Diseased',
         'category': 'Category',
         'confidence': 'Confidence',
         'location': 'Location',
@@ -663,6 +669,11 @@ st.markdown("""
   font-weight: 600;
   color: #2563eb;
 }
+
+/* 下拉选项样式优化 */
+.stSelectbox > div > div {
+  border-radius: 10px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1037,17 +1048,68 @@ with tab_tracking:
             # 失败提示
             st.error(f"分析失败：{result['message']}")
 
-# -------------------------------- 6) 模糊预测 --------------------------------
+# -------------------------------- 6) 模糊预测（改为下拉选项） --------------------------------
 with tab_fuzzy:
     st.markdown(f"#### {t('fuzzy_title')}")
     st.markdown(f"<div class='card'><b>{t('fuzzy_input')}</b></div>", unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    with c1:
-        day_behavior = st.number_input(t('fuzzy_day'), min_value=1.0, max_value=3.0, value=3.0, step=1.0)
-        night_behavior = st.number_input(t('fuzzy_night'), min_value=1.0, max_value=3.0, value=1.0, step=1.0)
-    with c2:
-        surface_features = st.number_input(t('fuzzy_surface'), min_value=1.0, max_value=3.0, value=3.0, step=1.0)
-        pathogen = st.number_input(t('fuzzy_pathogen'), min_value=1.0, max_value=3.0, value=3.0, step=1.0)
+    
+    # 定义选项映射
+    day_night_options = {
+        t('healthy'): 1.0,
+        t('subhealthy'): 2.0,
+        t('diseased'): 3.0
+    }
+    surface_options = {
+        t('healthy'): 1.0,
+        t('diseased'): 3.0
+    }
+    pathogen_options = {
+        t('pathogen_absent'): 1.0,
+        t('pathogen_present'): 3.0
+    }
+    
+    # 布局调整
+    col1, col2 = st.columns(2)
+    with col1:
+        # 日间行为下拉框
+        day_behavior_label = st.selectbox(
+            t('fuzzy_day'),
+            options=list(day_night_options.keys()),
+            index=2,  # 默认选中患病
+            key="day_behavior"
+        )
+        day_behavior_val = day_night_options[day_behavior_label]
+        
+        # 夜间行为下拉框
+        night_behavior_label = st.selectbox(
+            t('fuzzy_night'),
+            options=list(day_night_options.keys()),
+            index=0,  # 默认选中健康
+            key="night_behavior"
+        )
+        night_behavior_val = day_night_options[night_behavior_label]
+    
+    with col2:
+        # 体表特征下拉框
+        surface_features_label = st.selectbox(
+            t('fuzzy_surface'),
+            options=list(surface_options.keys()),
+            index=1,  # 默认选中患病
+            key="surface_features"
+        )
+        surface_features_val = surface_options[surface_features_label]
+        
+        # 病原存在性下拉框
+        pathogen_label = st.selectbox(
+            t('fuzzy_pathogen'),
+            options=list(pathogen_options.keys()),
+            index=1,  # 默认选中存在
+            key="pathogen_existence"
+        )
+        pathogen_val = pathogen_options[pathogen_label]
+    
+    # 预测按钮
     if st.button(t('fuzzy_predict'), type="primary"):
-        r = fuzzy_predict(day_behavior, night_behavior, surface_features, pathogen)
+        r = fuzzy_predict(day_behavior_val, night_behavior_val, surface_features_val, pathogen_val)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
