@@ -451,15 +451,16 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
         # 绘制检测框
         frame_with_detect = r.plot()
 
-        # 调试信息：第一帧打印检测类别
-        if total_frames == 1:
-            detected_classes = []
-            if hasattr(r, "boxes") and len(r.boxes) > 0:
-                for box in r.boxes:
-                    cls_idx = int(box.cls.item())
-                    cls_name = r.names.get(cls_idx, f"未知类别_{cls_idx}")
-                    detected_classes.append(cls_name)
-            st.info(f"模型[{model_key}]检测到的类别（第一帧）：{detected_classes} | 目标过滤类别：{fish_categories}")
+        # 【已删除】调试信息：第一帧打印检测类别
+        # 移除了以下这段调试代码
+        # if total_frames == 1:
+        #     detected_classes = []
+        #     if hasattr(r, "boxes") and len(r.boxes) > 0:
+        #         for box in r.boxes:
+        #             cls_idx = int(box.cls.item())
+        #             cls_name = r.names.get(cls_idx, f"未知类别_{cls_idx}")
+        #             detected_classes.append(cls_name)
+        #     st.info(f"模型[{model_key}]检测到的类别（第一帧）：{detected_classes} | 目标过滤类别：{fish_categories}")
 
         # 提取当前帧金鱼中心坐标
         current_center = None
@@ -505,7 +506,7 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
     if total_distance == 0:
         return {
             "success": True,
-            "message": f"{t('no_fish_detected')} | 模型：{model_key} | 建议：1.降低置信度阈值 2.确认视频中有金鱼 3.检查模型类别是否匹配（当前过滤类别：{fish_categories}）",
+            "message": f"{t('no_fish_detected')} | 模型：{model_key} | 建议：1.降低置信度阈值 2.确认视频中有金鱼 3.检查模型类别是否匹配",
             "total_distance": 0,
             "average_speed": 0,
             "video_duration": round(video_duration, 2),
@@ -1116,5 +1117,6 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior_val, night_behavior_val, surface_features_val, pathogen_val)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
 
 
