@@ -283,11 +283,11 @@ def get_health_status(average_speed: float, time_period: str) -> str:
 # ====================== 页面配置 ======================
 st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 
-# ====================== 模型加载（关键修改：模型键改为Behavior） ======================
+# ====================== 模型加载（关键修改：注释模型成功提示） ======================
 BASE_DIR = Path(__file__).parent
 WEIGHTS = BASE_DIR / "best.pt"  # Ich模型
 TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"  # Tomont模型
-BEHAVIOR_WEIGHTS = BASE_DIR / "behavior.best.pt"  # 行为分析模型（新增）
+BEHAVIOR_WEIGHTS = BASE_DIR / "behvior.best.pt"  # 行为分析模型（新增）
 IMG_DIR = BASE_DIR / "img"
 # 模型路径字典（关键修改：将"行为"改为"Behavior"）
 MODEL_PATHS = {"Ich": str(WEIGHTS), "Tomont": str(TOMONT_WEIGHTS), "Behavior": str(BEHAVIOR_WEIGHTS)}
@@ -302,7 +302,8 @@ def load_models():
         else:
             try:
                 models[k] = YOLO(p)
-                st.success(t('model_loaded').format(k=k, p=p))  # 现在k为Behavior，无中文
+                # 注释掉模型加载成功的提示行 ↓↓↓
+                # st.success(t('model_loaded').format(k=k, p=p))  # 现在k为Behavior，无中文
             except Exception as e:
                 st.error(f"{t('model_loaded').split(':')[0]} {k} failed: {str(e)}")
     # 兜底逻辑：无任何模型加载成功时，尝试加载Ich
@@ -1234,4 +1235,5 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior_val, night_behavior_val, surface_features_val, pathogen_val)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
 
