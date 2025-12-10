@@ -15,7 +15,6 @@ import math  # 新增：用于计算欧氏距离
 
 try:
     import cv2  # noqa: F401
-
     CV2_OK = True
 except Exception:
     CV2_OK = False
@@ -283,38 +282,55 @@ def get_health_status(average_speed: float, time_period: str) -> str:
 # ====================== 页面配置 ======================
 st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 
-# ====================== 模型加载（关键修改：注释模型成功提示） ======================
+# ====================== 模型加载（关键修复：清除缓存 + 路径验证） ======================
 BASE_DIR = Path(__file__).parent
 WEIGHTS = BASE_DIR / "best.pt"  # Ich模型
 TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"  # Tomont模型
-BEHAVIOR_WEIGHTS = BASE_DIR / "behavior.best.pt"  # 行为分析模型（新增）
+BEHAVIOR_WEIGHTS = BASE_DIR / "behavior.best.pt"  # 行为分析模型（确认拼写正确）
 IMG_DIR = BASE_DIR / "img"
+
+# 打印路径调试（方便排查）
+st.write(f"📌 代码中定义的Behavior模型路径：{BEHAVIOR_WEIGHTS}")
+st.write(f"📌 路径是否存在：{BEHAVIOR_WEIGHTS.exists()}")
+st.write(f"📌 当前工作目录：{Path.cwd()}")
+st.write(f"📌 BASE_DIR绝对路径：{BASE_DIR.absolute()}")
+
 # 模型路径字典（关键修改：将"行为"改为"Behavior"）
-MODEL_PATHS = {"Ich": str(WEIGHTS), "Tomont": str(TOMONT_WEIGHTS), "Behavior": str(BEHAVIOR_WEIGHTS)}
+MODEL_PATHS = {
+    "Ich": str(WEIGHTS.absolute()),  # 使用绝对路径
+    "Tomont": str(TOMONT_WEIGHTS.absolute()),
+    "Behavior": str(BEHAVIOR_WEIGHTS.absolute())  # 使用绝对路径
+}
 DEFAULT_CONF = 0.6  # 默认置信度
 
-@st.cache_resource
+# 关键修复：移除缓存装饰器，或添加版本参数强制刷新
+# 注释掉@st.cache_resource，避免缓存导致的旧路径问题
+# @st.cache_resource
 def load_models():
     models = {}
+    # 遍历模型路径，使用绝对路径验证
     for k, p in MODEL_PATHS.items():
-        if not Path(p).exists():
-            st.error(t('model_not_found').format(p=p, k=k))
+        path_obj = Path(p)
+        st.write(f"🔍 检查模型 {k}：路径={path_obj}，存在={path_obj.exists()}")
+        if not path_obj.exists():
+            st.error(t('model_not_found').format(p=str(path_obj), k=k))
         else:
             try:
                 models[k] = YOLO(p)
-                # 注释掉模型加载成功的提示行 ↓↓↓
-                # st.success(t('model_loaded').format(k=k, p=p))  # 现在k为Behavior，无中文
+                # 注释掉模型加载成功的提示行
+                # st.success(t('model_loaded').format(k=k, p=p))
             except Exception as e:
                 st.error(f"{t('model_loaded').split(':')[0]} {k} failed: {str(e)}")
     # 兜底逻辑：无任何模型加载成功时，尝试加载Ich
     if not models:
-        if Path(WEIGHTS).exists():
+        if WEIGHTS.exists():
             models["Ich"] = YOLO(WEIGHTS)
             st.warning(t('fallback_model'))
         else:
             st.error(t('no_available_model'))
     return models
 
+# 强制重新加载模型（清除缓存）
 MODELS = load_models()
 
 # ====================== 核心工具函数 ======================
@@ -760,6 +776,10 @@ st.markdown("""
 /* 下拉选项样式优化 */
 .stSelectbox > div > div {
   border-radius: 10px;
+}
+/* 隐藏调试信息（可选） */
+.debug-info {
+  display: none; /* 改为block可显示调试信息 */
 }
 </style>
 """, unsafe_allow_html=True)
@@ -1235,6 +1255,7 @@ with tab_fuzzy:
     if st.button(t('fuzzy_predict'), type="primary"):
         r = fuzzy_predict(day_behavior_val, night_behavior_val, surface_features_val, pathogen_val)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
 
 
 
