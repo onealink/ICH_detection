@@ -668,8 +668,8 @@ def build_fuzzy_sim():
     
     # 调整规则权重（关键规则权重更高）
     for r in rules: r.weight = 1.0
-    rules[1].weight = 2  # 行为患病规则权重加倍
-    rules[2].weight = 2  # 体表异常+有病原规则权重加倍
+    rules[1].weight = 1.5  # 行为患病规则权重加倍
+    rules[2].weight = 1.5  # 体表异常+有病原规则权重加倍
 
     return ctrl.ControlSystemSimulation(ctrl.ControlSystem(rules))
 
@@ -1236,3 +1236,4 @@ with tab_fuzzy:
         # 核心修改：调用模糊预测函数（仅传3个参数）
         r = fuzzy_predict(behavior_val, surface_val, pathogen_val)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
