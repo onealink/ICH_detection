@@ -130,7 +130,9 @@ translations = {
         'category': '类别',
         'confidence': '置信度',
         'location': '位置',
-        'path': '路径'
+        'path': '路径',
+        # 新增：模糊预测异常提示
+        'fuzzy_calc_error': '模糊计算异常，已使用默认值：'
     },
     'en': {
         # 核心轨迹分析翻译
@@ -233,7 +235,9 @@ translations = {
         'category': 'Category',
         'confidence': 'Confidence',
         'location': 'Location',
-        'path': 'Path'
+        'path': 'Path',
+        # 新增：模糊预测异常提示
+        'fuzzy_calc_error': 'Fuzzy calculation error, using default value: '
     }
 }
 
@@ -612,7 +616,7 @@ def zip_files(files: list[Path], out_zip: Path) -> Path:
             if f.exists(): zf.write(f, arcname=f.name)
     return out_zip
 
-# ========= 模糊预测（核心修改：合并行为特征+重构规则） =========
+# ========= 模糊预测（核心修改：覆盖所有边界情况+异常处理） =========
 @st.cache_resource
 def build_fuzzy_sim():
     # 核心修改1：移除day/night，新增behavior（行为特征）
@@ -640,10 +644,13 @@ def build_fuzzy_sim():
     risk['diseased'] = fuzz.trimf(risk.universe, [2.5, 3, 4])    # 患病
     risk.defuzzify_method = 'centroid'  # 重心法解模糊
 
-    # 核心修改2：重构模糊规则（基于行为特征、体表特征、病原存在性）
+    # 核心修改2：重构模糊规则（覆盖所有边界情况）
     rules = [
         # 基础规则：行为健康+体表健康+无病原 → 健康
         ctrl.Rule(behavior['healthy'] & surf['healthy'] & patho['absent'], risk['health']),
+        
+        # 新增：行为健康+体表健康+病原存在 → 亚健康（关键修复）
+        ctrl.Rule(behavior['healthy'] & surf['healthy'] & patho['present'], risk['subhealth']),
         
         # 高风险规则：行为患病 或 体表异常+有病原 → 患病
         ctrl.Rule(behavior['diseased'], risk['diseased']),
@@ -664,31 +671,44 @@ def build_fuzzy_sim():
         
         # 严格规则：行为患病+任何体表状态+有病原 → 高风险患病（权重提升）
         ctrl.Rule(behavior['diseased'] & patho['present'], risk['diseased']),
+        
+        # 补充：行为患病+体表异常+无病原 → 患病（覆盖最后边界）
+        ctrl.Rule(behavior['diseased'] & surf['diseased'] & patho['absent'], risk['diseased']),
     ]
     
     # 调整规则权重（关键规则权重更高）
     for r in rules: r.weight = 1.0
-    rules[1].weight = 1.5  # 行为患病规则权重加倍
-    rules[2].weight = 1.5  # 体表异常+有病原规则权重加倍
+    rules[3].weight = 2  # 行为患病规则权重加倍
+    rules[4].weight = 2  # 体表异常+有病原规则权重加倍
 
     return ctrl.ControlSystemSimulation(ctrl.ControlSystem(rules))
 
-# 核心修改3：模糊预测函数参数改为3个（行为特征、体表特征、病原存在性）
+# 核心修改3：增加异常处理，确保所有情况都能返回结果
 def fuzzy_predict(behavior_val: float, surf_val: float, patho_val: float) -> dict:
-    sim = build_fuzzy_sim()
-    sim.input['behavior'] = behavior_val  # 行为特征值
-    sim.input['surf'] = surf_val          # 体表特征值
-    sim.input['patho'] = patho_val        # 病原存在性值
-    sim.compute()
+    try:
+        sim = build_fuzzy_sim()
+        sim.input['behavior'] = behavior_val  # 行为特征值
+        sim.input['surf'] = surf_val          # 体表特征值
+        sim.input['patho'] = patho_val        # 病原存在性值
+        sim.compute()
+        
+        v = float(sim.output['risk'])
+        # 结果映射（兼容中英文）
+        if st.session_state.language == 'zh':
+            status = "健康" if v < 1.5 else ("亚健康" if v < 2.5 else "患病")
+        else:
+            status = t("healthy") if v < 1.5 else (t("subhealthy") if v < 2.5 else t("diseased"))
+        
+        return {"risk_value": round(v, 1), "risk_status": status}
     
-    v = float(sim.output['risk'])
-    # 结果映射（兼容中英文）
-    if st.session_state.language == 'zh':
-        status = "健康" if v < 1.5 else ("亚健康" if v < 2.5 else "患病")
-    else:
-        status = t("healthy") if v < 1.5 else (t("subhealthy") if v < 2.5 else t("diseased"))
-    
-    return {"risk_value": round(v, 1), "risk_status": status}
+    except Exception as e:
+        # 异常处理：返回默认值并提示
+        st.warning(f"{t('fuzzy_calc_error')}{str(e)}")
+        if st.session_state.language == 'zh':
+            default_status = "亚健康"
+        else:
+            default_status = t("subhealthy")
+        return {"risk_value": 2.0, "risk_status": default_status}
 
 # ========================= 全局样式 =========================
 st.markdown("""
@@ -1206,7 +1226,7 @@ with tab_fuzzy:
         behavior_label = st.selectbox(
             t('fuzzy_behavior'),
             options=list(behavior_options.keys()),
-            index=2,  # 默认选中"患病"
+            index=0,  # 默认选中"健康"
             key="behavior_feature"
         )
         behavior_val = behavior_options[behavior_label]
@@ -1216,7 +1236,7 @@ with tab_fuzzy:
         surface_label = st.selectbox(
             t('fuzzy_surface'),
             options=list(surface_options.keys()),
-            index=1,  # 默认选中"患病/异常"
+            index=0,  # 默认选中"健康"
             key="surface_feature"
         )
         surface_val = surface_options[surface_label]
@@ -1236,4 +1256,3 @@ with tab_fuzzy:
         # 核心修改：调用模糊预测函数（仅传3个参数）
         r = fuzzy_predict(behavior_val, surface_val, pathogen_val)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
-
