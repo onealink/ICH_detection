@@ -27,7 +27,7 @@ import time
 if 'language' not in st.session_state:
     st.session_state.language = 'zh'  # 默认中文
 
-# 翻译字典（完整覆盖所有文本，模型键"行为"改为"Behavior"）
+# 翻译字典（关键修改：移除日间/夜间，新增行为特征）
 translations = {
     'zh': {
         # 核心轨迹分析翻译
@@ -75,9 +75,8 @@ translations = {
         'Ich': '多子小瓜虫体表病征',
         'Tomont': '多子小瓜虫包囊',
         'Behavior': '鱼游动行为分析',  # 替换原"行为"为"Behavior"
-        # 模糊预测翻译
-        'fuzzy_day': '日间行为',
-        'fuzzy_night': '夜间行为',
+        # 模糊预测翻译（核心修改：合并为行为特征）
+        'fuzzy_behavior': '行为特征',  # 新增：合并日间/夜间为行为特征
         'fuzzy_surface': '体表特征',
         'fuzzy_pathogen': '病原存在性',
         'healthy': '健康',
@@ -179,9 +178,8 @@ translations = {
         'Ich': 'Ichthyophthirius Surface Symptoms',
         'Tomont': 'Ichthyophthirius Tomont',
         'Behavior': 'Fish Swimming Behavior Analysis',  # 替换原"行为"为"Behavior"
-        # 模糊预测翻译
-        'fuzzy_day': 'Day Behavior',
-        'fuzzy_night': 'Night Behavior',
+        # 模糊预测翻译（核心修改：合并为行为特征）
+        'fuzzy_behavior': 'Behavior Feature',  # 新增：合并日间/夜间为行为特征
         'fuzzy_surface': 'Surface Features',
         'fuzzy_pathogen': 'Pathogen Existence',
         'healthy': 'Healthy',
@@ -614,73 +612,82 @@ def zip_files(files: list[Path], out_zip: Path) -> Path:
             if f.exists(): zf.write(f, arcname=f.name)
     return out_zip
 
-# ========= 模糊预测 =========
+# ========= 模糊预测（核心修改：合并行为特征+重构规则） =========
 @st.cache_resource
 def build_fuzzy_sim():
-    day = ctrl.Antecedent(np.arange(1, 4.1, 0.1), 'day')
-    night = ctrl.Antecedent(np.arange(1, 4.1, 0.1), 'night')
-    surf = ctrl.Antecedent(np.arange(1, 4.1, 0.1), 'surf')
-    patho = ctrl.Antecedent(np.arange(1, 4.1, 0.1), 'patho')
-    risk = ctrl.Consequent(np.arange(0, 4.1, 0.1), 'risk')
+    # 核心修改1：移除day/night，新增behavior（行为特征）
+    behavior = ctrl.Antecedent(np.arange(1, 4.1, 0.1), 'behavior')  # 行为特征：1=健康，2=亚健康，3=患病
+    surf = ctrl.Antecedent(np.arange(1, 4.1, 0.1), 'surf')          # 体表特征
+    patho = ctrl.Antecedent(np.arange(1, 4.1, 0.1), 'patho')        # 病原存在性
+    risk = ctrl.Consequent(np.arange(0, 4.1, 0.1), 'risk')          # 风险结果
 
-    for b in [day, night]:
-        b['healthy'] = fuzz.trimf(b.universe, [1, 1, 1.5])
-        b['subhealthy'] = fuzz.trimf(b.universe, [1.5, 2, 2.5])
-        b['diseased'] = fuzz.trimf(b.universe, [2.5, 3, 4])
+    # 行为特征隶属度函数（合并原日间+夜间逻辑）
+    behavior['healthy'] = fuzz.trimf(behavior.universe, [1, 1, 1.5])    # 健康行为
+    behavior['subhealthy'] = fuzz.trimf(behavior.universe, [1.5, 2, 2.5])# 亚健康行为
+    behavior['diseased'] = fuzz.trimf(behavior.universe, [2.5, 3, 4])   # 患病行为
 
-    surf['healthy'] = fuzz.trimf(surf.universe, [1, 1, 2])
-    surf['diseased'] = fuzz.trimf(surf.universe, [2, 3, 4])
-    patho['absent'] = fuzz.trimf(patho.universe, [1, 1, 2])
-    patho['present'] = fuzz.trimf(patho.universe, [2, 3, 4])
+    # 体表特征隶属度函数（保留）
+    surf['healthy'] = fuzz.trimf(surf.universe, [1, 1, 2])       # 体表健康
+    surf['diseased'] = fuzz.trimf(surf.universe, [2, 3, 4])      # 体表异常
 
-    risk['health'] = fuzz.trimf(risk.universe, [0, 1, 1.5])
-    risk['subhealth'] = fuzz.trimf(risk.universe, [1.5, 2, 2.5])
-    risk['diseased'] = fuzz.trimf(risk.universe, [2.5, 3, 4])
-    risk.defuzzify_method = 'centroid'
+    # 病原存在性隶属度函数（保留）
+    patho['absent'] = fuzz.trimf(patho.universe, [1, 1, 2])      # 无病原
+    patho['present'] = fuzz.trimf(patho.universe, [2, 3, 4])     # 有病原
 
+    # 风险结果隶属度函数（保留）
+    risk['health'] = fuzz.trimf(risk.universe, [0, 1, 1.5])      # 健康
+    risk['subhealth'] = fuzz.trimf(risk.universe, [1.5, 2, 2.5]) # 亚健康
+    risk['diseased'] = fuzz.trimf(risk.universe, [2.5, 3, 4])    # 患病
+    risk.defuzzify_method = 'centroid'  # 重心法解模糊
+
+    # 核心修改2：重构模糊规则（基于行为特征、体表特征、病原存在性）
     rules = [
-        ctrl.Rule(day['subhealthy'] & night['diseased'] & surf['healthy'] & patho['present'], risk['diseased']),
-        ctrl.Rule(day['healthy'] & night['healthy'] & surf['healthy'] & patho['absent'], risk['health']),
-        ctrl.Rule(day['diseased'] | night['diseased'], risk['diseased']),
-        ctrl.Rule(day['subhealthy'] | night['subhealthy'], risk['subhealth']),
+        # 基础规则：行为健康+体表健康+无病原 → 健康
+        ctrl.Rule(behavior['healthy'] & surf['healthy'] & patho['absent'], risk['health']),
+        
+        # 高风险规则：行为患病 或 体表异常+有病原 → 患病
+        ctrl.Rule(behavior['diseased'], risk['diseased']),
         ctrl.Rule(surf['diseased'] & patho['present'], risk['diseased']),
-        ctrl.Rule(surf['healthy'] & patho['absent'], risk['health']),
-        ctrl.Rule(day['healthy'] & night['subhealthy'] & surf['healthy'] & patho['present'], risk['subhealth']),
-        ctrl.Rule(day['subhealthy'] & night['healthy'] & surf['healthy'] & patho['present'], risk['subhealth']),
-        ctrl.Rule(day['healthy'] & night['healthy'] & surf['diseased'] & patho['present'], risk['diseased']),
-        ctrl.Rule(day['healthy'] & night['healthy'] & surf['healthy'] & patho['present'], risk['subhealth']),
-        ctrl.Rule(day['subhealthy'] & night['subhealthy'] & surf['healthy'] & patho['absent'], risk['health']),
-        ctrl.Rule(day['subhealthy'] & night['subhealthy'] & surf['diseased'] & patho['absent'], risk['subhealth']),
-        ctrl.Rule(day['subhealthy'] & night['diseased'] & surf['diseased'] & patho['present'], risk['diseased']),
-        ctrl.Rule(day['diseased'] & night['subhealthy'] & surf['diseased'] & patho['present'], risk['diseased']),
-        ctrl.Rule(day['subhealthy'] & night['subhealthy'] & surf['diseased'] & patho['present'], risk['diseased']),
-        ctrl.Rule(day['healthy'] & night['subhealthy'] & surf['diseased'] & patho['absent'], risk['subhealth']),
-        ctrl.Rule(day['subhealthy'] & night['healthy'] & surf['diseased'] & patho['absent'], risk['subhealth']),
-        ctrl.Rule(day['subhealthy'] & night['subhealthy'] & surf['diseased'] & patho['absent'], risk['subhealth']),
-        ctrl.Rule(day['healthy'] & night['healthy'] & surf['diseased'] & patho['absent'], risk['subhealth']),
-        ctrl.Rule(day['diseased'] & night['diseased'] & surf['healthy'] & patho['absent'], risk['diseased']),
-        ctrl.Rule(day['diseased'] & night['diseased'] & surf['diseased'] & patho['absent'], risk['diseased']),
-        ctrl.Rule(day['diseased'] & night['diseased'] & surf['healthy'] & patho['present'], risk['diseased']),
-        ctrl.Rule(day['diseased'] & night['diseased'] & surf['diseased'] & patho['present'], risk['diseased']),
+        
+        # 中风险规则：行为亚健康 或 体表异常但无病原 → 亚健康
+        ctrl.Rule(behavior['subhealthy'], risk['subhealth']),
+        ctrl.Rule(surf['diseased'] & patho['absent'], risk['subhealth']),
+        
+        # 边界规则：行为健康但体表异常+有病原 → 亚健康（过渡状态）
+        ctrl.Rule(behavior['healthy'] & surf['diseased'] & patho['present'], risk['subhealth']),
+        
+        # 边界规则：行为亚健康+体表健康+有病原 → 亚健康
+        ctrl.Rule(behavior['subhealthy'] & surf['healthy'] & patho['present'], risk['subhealth']),
+        
+        # 边界规则：行为亚健康+体表异常+无病原 → 亚健康
+        ctrl.Rule(behavior['subhealthy'] & surf['diseased'] & patho['absent'], risk['subhealth']),
+        
+        # 严格规则：行为患病+任何体表状态+有病原 → 高风险患病（权重提升）
+        ctrl.Rule(behavior['diseased'] & patho['present'], risk['diseased']),
     ]
+    
+    # 调整规则权重（关键规则权重更高）
     for r in rules: r.weight = 1.0
-    rules[4].weight = 2;
-    rules[5].weight = 2
+    rules[1].weight = 2  # 行为患病规则权重加倍
+    rules[2].weight = 2  # 体表异常+有病原规则权重加倍
 
     return ctrl.ControlSystemSimulation(ctrl.ControlSystem(rules))
 
-def fuzzy_predict(day_val: float, night_val: float, surf_val: float, patho_val: float) -> dict:
+# 核心修改3：模糊预测函数参数改为3个（行为特征、体表特征、病原存在性）
+def fuzzy_predict(behavior_val: float, surf_val: float, patho_val: float) -> dict:
     sim = build_fuzzy_sim()
-    sim.input['day'] = day_val
-    sim.input['night'] = night_val
-    sim.input['surf'] = surf_val
-    sim.input['patho'] = patho_val
+    sim.input['behavior'] = behavior_val  # 行为特征值
+    sim.input['surf'] = surf_val          # 体表特征值
+    sim.input['patho'] = patho_val        # 病原存在性值
     sim.compute()
+    
     v = float(sim.output['risk'])
+    # 结果映射（兼容中英文）
     if st.session_state.language == 'zh':
         status = "健康" if v < 1.5 else ("亚健康" if v < 2.5 else "患病")
     else:
         status = t("healthy") if v < 1.5 else (t("subhealthy") if v < 2.5 else t("diseased"))
+    
     return {"risk_value": round(v, 1), "risk_status": status}
 
 # ========================= 全局样式 =========================
@@ -1171,67 +1178,61 @@ with tab_tracking:
             # 失败提示
             st.error(f"{t('analysis_failed')}{result['message']}")
 
-# -------------------------------- 6) 模糊预测（下拉选项） --------------------------------
+# -------------------------------- 6) 模糊预测（核心修改：合并行为特征） --------------------------------
 with tab_fuzzy:
     st.markdown(f"#### {t('fuzzy_title')}")
     st.markdown(f"<div class='card'><b>{t('fuzzy_input')}</b></div>", unsafe_allow_html=True)
     
-    # 定义选项映射
-    day_night_options = {
-        t('healthy'): 1.0,
-        t('subhealthy'): 2.0,
-        t('diseased'): 3.0
+    # 核心修改：定义新的选项映射（仅保留行为特征、体表特征、病原存在性）
+    behavior_options = {
+        t('healthy'): 1.0,      # 健康行为
+        t('subhealthy'): 2.0,   # 亚健康行为
+        t('diseased'): 3.0      # 患病行为
     }
     surface_options = {
-        t('healthy'): 1.0,
-        t('diseased'): 3.0
+        t('healthy'): 1.0,      # 体表健康
+        t('diseased'): 3.0      # 体表异常
     }
     pathogen_options = {
-        t('pathogen_absent'): 1.0,
-        t('pathogen_present'): 3.0
+        t('pathogen_absent'): 1.0,  # 无病原
+        t('pathogen_present'): 3.0  # 有病原
     }
     
-    # 布局调整
-    col1, col2 = st.columns(2)
+    # 布局调整：改为三列布局（行为特征、体表特征、病原存在性）
+    col1, col2, col3 = st.columns(3)
+    
     with col1:
-        # 日间行为下拉框
-        day_behavior_label = st.selectbox(
-            t('fuzzy_day'),
-            options=list(day_night_options.keys()),
-            index=2,
-            key="day_behavior"
+        # 行为特征下拉框（合并原日间+夜间）
+        behavior_label = st.selectbox(
+            t('fuzzy_behavior'),
+            options=list(behavior_options.keys()),
+            index=2,  # 默认选中"患病"
+            key="behavior_feature"
         )
-        day_behavior_val = day_night_options[day_behavior_label]
-        
-        # 夜间行为下拉框
-        night_behavior_label = st.selectbox(
-            t('fuzzy_night'),
-            options=list(day_night_options.keys()),
-            index=0,
-            key="night_behavior"
-        )
-        night_behavior_val = day_night_options[night_behavior_label]
+        behavior_val = behavior_options[behavior_label]
     
     with col2:
-        # 体表特征下拉框
-        surface_features_label = st.selectbox(
+        # 体表特征下拉框（保留）
+        surface_label = st.selectbox(
             t('fuzzy_surface'),
             options=list(surface_options.keys()),
-            index=1,
-            key="surface_features"
+            index=1,  # 默认选中"患病/异常"
+            key="surface_feature"
         )
-        surface_features_val = surface_options[surface_features_label]
-        
-        # 病原存在性下拉框
+        surface_val = surface_options[surface_label]
+    
+    with col3:
+        # 病原存在性下拉框（保留）
         pathogen_label = st.selectbox(
             t('fuzzy_pathogen'),
             options=list(pathogen_options.keys()),
-            index=1,
-            key="pathogen_existence"
+            index=1,  # 默认选中"存在"
+            key="pathogen_feature"
         )
         pathogen_val = pathogen_options[pathogen_label]
     
     # 预测按钮
-    if st.button(t('fuzzy_predict'), type="primary"):
-        r = fuzzy_predict(day_behavior_val, night_behavior_val, surface_features_val, pathogen_val)
+    if st.button(t('fuzzy_predict'), type="primary", use_container_width=True):
+        # 核心修改：调用模糊预测函数（仅传3个参数）
+        r = fuzzy_predict(behavior_val, surface_val, pathogen_val)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
