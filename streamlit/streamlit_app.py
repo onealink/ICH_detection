@@ -15,6 +15,7 @@ import math  # 新增：用于计算欧氏距离
 
 try:
     import cv2  # noqa: F401
+
     CV2_OK = True
 except Exception:
     CV2_OK = False
@@ -282,20 +283,12 @@ def get_health_status(average_speed: float, time_period: str) -> str:
 # ====================== 页面配置 ======================
 st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 
-# ====================== 模型加载（关键修改：收集加载日志+确保UI渲染） ======================
+# ====================== 模型加载（关键修改：模型键改为Behavior） ======================
 BASE_DIR = Path(__file__).parent
 WEIGHTS = BASE_DIR / "best.pt"  # Ich模型
 TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"  # Tomont模型
 BEHAVIOR_WEIGHTS = BASE_DIR / "guijibest.pt"  # 行为分析模型（新增）
 IMG_DIR = BASE_DIR / "img"
-
-# 调试：打印模型路径（可选，上线后可注释）
-st.sidebar.markdown("### 📝 路径调试信息")
-st.sidebar.write(f"当前脚本目录: {BASE_DIR}")
-st.sidebar.write(f"Ich模型路径: {WEIGHTS} (存在: {WEIGHTS.exists()})")
-st.sidebar.write(f"Tomont模型路径: {TOMONT_WEIGHTS} (存在: {TOMONT_WEIGHTS.exists()})")
-st.sidebar.write(f"Behavior模型路径: {BEHAVIOR_WEIGHTS} (存在: {BEHAVIOR_WEIGHTS.exists()})")
-
 # 模型路径字典（关键修改：将"行为"改为"Behavior"）
 MODEL_PATHS = {"Ich": str(WEIGHTS), "Tomont": str(TOMONT_WEIGHTS), "Behavior": str(BEHAVIOR_WEIGHTS)}
 DEFAULT_CONF = 0.6  # 默认置信度
@@ -303,45 +296,26 @@ DEFAULT_CONF = 0.6  # 默认置信度
 @st.cache_resource
 def load_models():
     models = {}
-    load_logs = []  # 关键修改：收集加载日志，用于后续UI显示
     for k, p in MODEL_PATHS.items():
-        path = Path(p)
-        if not path.exists():
-            err_msg = t('model_not_found').format(p=p, k=k)
-            load_logs.append(("error", err_msg))
+        if not Path(p).exists():
+            st.error(t('model_not_found').format(p=p, k=k))
         else:
             try:
                 models[k] = YOLO(p)
-                success_msg = t('model_loaded').format(k=k, p=p)
-                load_logs.append(("success", success_msg))
+                # 注释掉以下行，隐藏模型加载成功的提示
+                # st.success(t('model_loaded').format(k=k, p=p))  # 现在k为Behavior，无中文
             except Exception as e:
-                err_msg = f"{t('model_loaded').split(':')[0]} {k} failed: {str(e)}"
-                load_logs.append(("error", err_msg))
+                st.error(f"{t('model_loaded').split(':')[0]} {k} failed: {str(e)}")
     # 兜底逻辑：无任何模型加载成功时，尝试加载Ich
     if not models:
         if Path(WEIGHTS).exists():
             models["Ich"] = YOLO(WEIGHTS)
-            warn_msg = t('fallback_model')
-            load_logs.append(("warning", warn_msg))
+            st.warning(t('fallback_model'))
         else:
-            err_msg = t('no_available_model')
-            load_logs.append(("error", err_msg))
-    return models, load_logs
+            st.error(t('no_available_model'))
+    return models
 
-# 加载模型并获取日志
-MODELS, LOAD_LOGS = load_models()
-
-# 关键修改：在侧边栏显示模型加载日志（确保提示能渲染）
-with st.sidebar:
-    st.divider()
-    st.markdown("### 🧠 模型加载状态")
-    for log_type, log_msg in LOAD_LOGS:
-        if log_type == "success":
-            st.success(log_msg)
-        elif log_type == "error":
-            st.error(log_msg)
-        elif log_type == "warning":
-            st.warning(log_msg)
+MODELS = load_models()
 
 # ====================== 核心工具函数 ======================
 def detections_to_df(res) -> pd.DataFrame:
@@ -750,30 +724,43 @@ st.markdown("""
 
 /* 语言切换按钮样式 */
 .lang-switch {
-  position: fixed; top: 20px; right: 20px; z-index: 999;
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 999;
 }
 
 /* 轨迹统计卡片样式 */
 .traj-card {
-  background: #f0f8ff; border: 1px solid #b8d4ff; border-radius: 12px;
-  padding: 16px; margin: 8px 0;
+  background: #f0f8ff;
+  border: 1px solid #b8d4ff;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 8px 0;
 }
 .traj-metric {
-  font-size: 18px; font-weight: 600; color: #2563eb;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2563eb;
 }
 /* 健康程度卡片特殊样式 */
 .health-card {
-  background: #e8f4f8; border: 1px solid #4299e1;
+  background: #e8f4f8;
+  border: 1px solid #4299e1;
 }
 .health-status {
-  font-size: 20px; font-weight: 700; color: #2d3748;
+  font-size: 20px;
+  font-weight: 700;
+  color: #2d3748;
 }
 .healthy { color: #48bb78 !important; }
 .subhealthy { color: #ed8936 !important; }
 .diseased { color: #e53e3e !important; }
 
 /* 下拉选项样式优化 */
-.stSelectbox > div > div { border-radius: 10px; }
+.stSelectbox > div > div {
+  border-radius: 10px;
+}
 </style>
 """, unsafe_allow_html=True)
 
