@@ -193,7 +193,7 @@ translations = {
         'page_title': 'YOLO Disease Detection',
         'header_title': 'Fish Parasitic Disease Detection',
         'header_subtitle': 'Image / Batch / Video / Camera / Trajectory Analysis / Fuzzy Prediction — One-stop Detection Platform',
-        'sidebar_university': 'Ningbo University · Aquatic Animal Medicine Laboratory',
+        'sidebar_university': 'Ningbo University \n Aquatic Animal Medicine Laboratory',
         'sidebar_model': '🧠 Model & Parameters',
         'sidebar_model_type': 'Model Type',
         'sidebar_current_model': 'Current Model:',
@@ -1256,5 +1256,6 @@ with tab_fuzzy:
         # 核心修改：调用模糊预测函数（仅传3个参数）
         r = fuzzy_predict(behavior_val, surface_val, pathogen_val)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
 
 
