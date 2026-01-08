@@ -88,7 +88,7 @@ translations = {
         'page_title': 'YOLO病害检测',
         'header_title': '鱼类寄生虫病检测',
         'header_subtitle': '图片 / 批量 / 视频 / 摄像头 / 轨迹分析 / 模糊预测 — 一站式检测台',
-        'sidebar_university': '宁波大学 · 水产动物医学综合实验室',
+        'sidebar_university': '宁波大学 \n 水产动物医学综合实验室',
         'sidebar_model': '🧠 模型与参数',
         'sidebar_model_type': '模型类型',
         'sidebar_current_model': '当前模型:',
@@ -1256,4 +1256,5 @@ with tab_fuzzy:
         # 核心修改：调用模糊预测函数（仅传3个参数）
         r = fuzzy_predict(behavior_val, surface_val, pathogen_val)
         st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
+
 
