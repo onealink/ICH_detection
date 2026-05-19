@@ -11,7 +11,7 @@ import streamlit as st
 from PIL import Image
 
 # Streamlit 要求 set_page_config 尽量放在第一个 Streamlit 命令之前。
-st.set_page_config(page_title="YOLO Disease Detection", page_icon="🧪", layout="wide")
+st.set_page_config(page_title="White Spot Disease Detection", page_icon="🧪", layout="wide")
 
 # OpenCV：云端推荐使用 opencv-python-headless。
 try:
@@ -28,8 +28,8 @@ try:
     YOLO_OK = True
 except Exception as e:
     YOLO = None
-    YOLO_OK = False
-    YOLO_IMPORT_ERROR = e
+    _OK = False
+    _IMPORT_ERROR = e
 
 # scikit-fuzzy：缺失时只禁用模糊预测功能，其他页面仍可打开。
 try:
@@ -91,9 +91,9 @@ translations = {
         'model_label': '模型：',
         'health_status_label': '健康程度：',
         # 模型名称翻译（关键修改：Behavior对应中文）
-        'Ich': '多子小瓜虫体表病征',
+        'Ich': '多子小瓜虫病体表病征',
         'Tomont': '多子小瓜虫包囊',
-        'Behavior': '鱼游动行为分析',  # 替换原"行为"为"Behavior"
+        'Behavior': '金鱼游动行为分析',  # 替换原"行为"为"Behavior"
         # 模糊预测翻译（核心修改：合并为行为特征）
         'fuzzy_behavior': '行为特征',  # 新增：合并日间/夜间为行为特征
         'fuzzy_surface': '体表特征',
@@ -104,7 +104,7 @@ translations = {
         'pathogen_absent': '不存在',
         'pathogen_present': '存在',
         # 原有基础翻译
-        'page_title': 'YOLO病害检测',
+        'page_title': '鱼类白点病病检测',
         'header_title': '鱼类白点病检测',
         'header_subtitle': '图片 / 批量 / 视频 / 摄像头 / 轨迹分析 / 模糊预测 — 一站式检测台',
         'sidebar_university': '宁波大学 \n 水产动物医学综合实验室',
