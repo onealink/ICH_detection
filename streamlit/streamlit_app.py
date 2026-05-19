@@ -22,8 +22,8 @@ import skfuzzy as fuzz
 from skfuzzy import control as ctrl
 import time
 
-# ====================== 强制清除缓存（解决旧错误） ======================
-@st.cache_resource(clear=True)
+# ====================== 正确清除缓存 ======================
+@st.cache_resource(show_spinner=False)
 def clear_cache():
     return None
 clear_cache()
@@ -290,7 +290,7 @@ MODEL_PATHS = {
 DEFAULT_CONF = 0.6
 
 # 不缓存，强制每次重新加载模型
-@st.cache_resource(show_spinner=True, validate=True)
+@st.cache_resource(show_spinner=True)
 def load_models():
     models = {}
     st.write("🔍 模型搜索路径：", BASE_DIR)
