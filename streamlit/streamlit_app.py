@@ -1,50 +1,31 @@
+import streamlit as st
+import base64
 import io
-import math
-import time
+import json
 import zipfile
 from pathlib import Path
-from typing import List, Optional
-
+from typing import List
 import numpy as np
 import pandas as pd
-import streamlit as st
+import requests
 from PIL import Image
+from websocket import create_connection, WebSocket
+from ultralytics import YOLO
+import math  # 新增：用于计算欧氏距离
 
-# Streamlit 要求 set_page_config 尽量放在第一个 Streamlit 命令之前。
-st.set_page_config(page_title="White Spot Disease Detection", page_icon="🧪", layout="wide")
-
-# OpenCV：云端推荐使用 opencv-python-headless。
 try:
     import cv2  # noqa: F401
+
     CV2_OK = True
-except Exception as e:
-    cv2 = None
+except Exception:
     CV2_OK = False
-    CV2_IMPORT_ERROR = e
-
-# YOLO：避免 ultralytics 未安装或 torch 环境异常时整页直接崩溃。
-try:
-    from ultralytics import YOLO
-    YOLO_OK = True
-except Exception as e:
-    YOLO = None
-    _OK = False
-    _IMPORT_ERROR = e
-
-# scikit-fuzzy：缺失时只禁用模糊预测功能，其他页面仍可打开。
-try:
-    import skfuzzy as fuzz
-    from skfuzzy import control as ctrl
-    FUZZY_OK = True
-except Exception as e:
-    fuzz = None
-    ctrl = None
-    FUZZY_OK = False
-    FUZZY_IMPORT_ERROR = e
+import skfuzzy as fuzz
+from skfuzzy import control as ctrl
+import time
 
 # ====================== 语言配置（完整中英文翻译字典） ======================
-if "language" not in st.session_state:
-    st.session_state.language = "zh"  # 默认中文
+if 'language' not in st.session_state:
+    st.session_state.language = 'zh'  # 默认中文
 
 # 翻译字典（关键修改：移除日间/夜间，新增行为特征）
 translations = {
@@ -91,9 +72,12 @@ translations = {
         'model_label': '模型：',
         'health_status_label': '健康程度：',
         # 模型名称翻译（关键修改：Behavior对应中文）
-        'Ich': '多子小瓜虫病体表病征',
+        'Ich': '多子小瓜虫体表病征',
         'Tomont': '多子小瓜虫包囊',
-        'Behavior': '金鱼游动行为分析',  # 替换原"行为"为"Behavior"
+        'Behavior': '鱼游动行为分析',
+        'CiSurface': '刺激隐核虫病体表病症',
+        'CiTomont': '刺激隐核虫包囊',
+        'CroakerBehavior': '大黄鱼游动行为分析',
         # 模糊预测翻译（核心修改：合并为行为特征）
         'fuzzy_behavior': '行为特征',  # 新增：合并日间/夜间为行为特征
         'fuzzy_surface': '体表特征',
@@ -104,8 +88,8 @@ translations = {
         'pathogen_absent': '不存在',
         'pathogen_present': '存在',
         # 原有基础翻译
-        'page_title': '鱼类白点病病检测',
-        'header_title': '鱼类白点病检测',
+        'page_title': 'YOLO病害检测',
+        'header_title': '鱼类寄生虫病检测',
         'header_subtitle': '图片 / 批量 / 视频 / 摄像头 / 轨迹分析 / 模糊预测 — 一站式检测台',
         'sidebar_university': '宁波大学 \n 水产动物医学综合实验室',
         'sidebar_model': '🧠 模型与参数',
@@ -198,7 +182,10 @@ translations = {
         # 模型名称翻译（关键修改：Behavior对应英文）
         'Ich': 'Ichthyophthirius Surface Symptoms',
         'Tomont': 'Ichthyophthirius Tomont',
-        'Behavior': 'Fish Swimming Behavior Analysis',  # 替换原"行为"为"Behavior"
+        'Behavior': 'Goldfish Swimming Behavior Analysis',
+        'CiSurface': 'Cryptocaryon irritans Surface Symptoms',
+        'CiTomont': 'Cryptocaryon irritans Tomont',
+        'CroakerBehavior': 'Large Yellow Croaker Swimming Behavior Analysis',
         # 模糊预测翻译（核心修改：合并为行为特征）
         'fuzzy_behavior': 'Behavior Feature',  # 新增：合并日间/夜间为行为特征
         'fuzzy_surface': 'Surface Features',
@@ -301,23 +288,35 @@ def get_health_status(average_speed: float, time_period: str) -> str:
         else:
             return diseased
 
+# ====================== 页面配置 ======================
+st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
+
 # ====================== 模型加载（关键修改：模型键改为Behavior） ======================
 BASE_DIR = Path(__file__).parent
-WEIGHTS = BASE_DIR / "best.pt"  # Ich模型
-TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"  # Tomont模型
-BEHAVIOR_WEIGHTS = BASE_DIR / "guijibest.pt"  # 行为分析模型（新增）
+WEIGHTS = BASE_DIR / "best.pt"  # 多子小瓜虫病体表病征模型
+TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"  # 多子小瓜虫包囊模型
+BEHAVIOR_WEIGHTS = BASE_DIR / "guijibest.pt"  # 金鱼游动行为分析模型
+
+CI_SURFACE_WEIGHTS = BASE_DIR / "cybest.pt"  # 刺激隐核虫病体表病症模型
+CI_TOMONT_WEIGHTS = BASE_DIR / "cibest.pt"  # 刺激隐核虫包囊模型
+CROAKER_BEHAVIOR_WEIGHTS = BASE_DIR / "cyguijibest.pt"  # 大黄鱼游动行为分析模型
+
 IMG_DIR = BASE_DIR / "img"
-# 模型路径字典（关键修改：将"行为"改为"Behavior"）
-MODEL_PATHS = {"Ich": str(WEIGHTS), "Tomont": str(TOMONT_WEIGHTS), "Behavior": str(BEHAVIOR_WEIGHTS)}
+
+# 模型路径字典：key 为程序内部模型名，value 为模型文件路径。
+MODEL_PATHS = {
+    "Ich": str(WEIGHTS),
+    "Tomont": str(TOMONT_WEIGHTS),
+    "Behavior": str(BEHAVIOR_WEIGHTS),
+    "CiSurface": str(CI_SURFACE_WEIGHTS),
+    "CiTomont": str(CI_TOMONT_WEIGHTS),
+    "CroakerBehavior": str(CROAKER_BEHAVIOR_WEIGHTS),
+}
 DEFAULT_CONF = 0.6  # 默认置信度
 
 @st.cache_resource
 def load_models():
     models = {}
-    if not YOLO_OK:
-        st.error(f"ultralytics / YOLO 加载失败：{YOLO_IMPORT_ERROR}")
-        st.info("请检查 requirements.txt 中是否包含 ultralytics、torch、torchvision，并确认 Python 版本为 3.10 或 3.11。")
-        return models
     for k, p in MODEL_PATHS.items():
         if not Path(p).exists():
             st.error(t('model_not_found').format(p=p, k=k))
@@ -370,7 +369,7 @@ def detections_to_df(res) -> pd.DataFrame:
         return res
     return pd.DataFrame()
 
-def predict_on_image(img_input, model_key: str, conf: Optional[float] = None):
+def predict_on_image(img_input, model_key: str, conf: float | None = None):
     if isinstance(img_input, (bytes, bytearray)):
         pil_img = Image.open(io.BytesIO(img_input)).convert("RGB")
     elif isinstance(img_input, Image.Image):
@@ -406,7 +405,7 @@ def predict_on_image(img_input, model_key: str, conf: Optional[float] = None):
     return vis_pil, df
 
 # 原有视频处理函数
-def process_video(video_bytes: bytes, model_key: str, conf: Optional[float] = None, max_frames: Optional[int] = None) -> Path:
+def process_video(video_bytes: bytes, model_key: str, conf: float | None = None, max_frames: int | None = None) -> Path:
     if not CV2_OK:
         raise RuntimeError(t("video_disabled"))
     in_path = Path("input_tmp.mp4");
@@ -705,11 +704,6 @@ def build_fuzzy_sim():
 
 # 核心修改3：增加异常处理，确保所有情况都能返回结果
 def fuzzy_predict(behavior_val: float, surf_val: float, patho_val: float) -> dict:
-    if not FUZZY_OK:
-        st.warning(f"scikit-fuzzy 加载失败，已返回默认值：{FUZZY_IMPORT_ERROR}")
-        default_status = "亚健康" if st.session_state.language == "zh" else t("subhealthy")
-        return {"risk_value": 2.0, "risk_status": default_status}
-
     try:
         sim = build_fuzzy_sim()
         sim.input['behavior'] = behavior_val  # 行为特征值
@@ -894,9 +888,12 @@ with st.sidebar:
     st.header(t('sidebar_model'))
     # 仅显示已加载的模型（使用优化后的翻译名称）
     model_options = {
-        "Ich": t('Ich'), 
-        "Tomont": t('Tomont'), 
-        "Behavior": t('Behavior')  # 替换原"行为"为"Behavior"
+        "Ich": t("Ich"),
+        "Tomont": t("Tomont"),
+        "Behavior": t("Behavior"),
+        "CiSurface": t("CiSurface"),
+        "CiTomont": t("CiTomont"),
+        "CroakerBehavior": t("CroakerBehavior"),
     }
     available_models = {k: model_options.get(k, k) for k in MODELS.keys()}
     if not available_models:
