@@ -14,7 +14,7 @@ from ultralytics import YOLO
 import math
 
 # ==============================================
-# PP‑YOLOv11 自定义模块（用于加载改进模型）
+# PP‑YOLOv11 自定义模块（解决c2f_ppblock缺失报错）
 # ==============================================
 import torch
 import torch.nn as nn
@@ -22,7 +22,6 @@ import torch.nn.functional as F
 import sys
 import types
 
-# 注册虚拟模块，彻底解决 No module named 'ultralytics.nn.modules.c2f_ppblock'
 module_name = 'ultralytics.nn.modules.c2f_ppblock'
 if module_name not in sys.modules:
     fake_module = types.ModuleType(module_name)
@@ -88,18 +87,16 @@ class C2f_PPBlock(nn.Module):
             out = out + x
         return out
 
-# 注册到虚拟模块
 sys.modules[module_name].C2f_PPBlock = C2f_PPBlock
 sys.modules[module_name].PPBlock = PPBlock
 
 def load_model_with_fallback(model_path: str):
-    """静默加载，不输出任何日志"""
     try:
-        model = YOLO(model_path, task="detect")
+        model = YOLO(model_path, task="detect", verbose=False)
         return model
     except:
         try:
-            model = YOLO(model_path, task="detect")
+            model = YOLO(model_path, task="detect", verbose=False)
             return model
         except:
             return None
@@ -141,11 +138,6 @@ translations = {
         'daytime': '日间',
         'nighttime': '夜间',
         'no_fish_detected': '未检测到鱼类，无法计算轨迹数据',
-        'model_loaded': '成功加载模型：{k} -> {p}',
-        'model_not_found': '模型文件不存在：{p}（{k}模型）',
-        'model_switch': '模型{k}不存在，已切换为{default_model}',
-        'no_available_model': '无可用模型，请检查模型文件路径！',
-        'fallback_model': '所有模型加载失败，已兜底加载Ich模型',
         'conf_threshold': '检测置信度阈值（降低以检测更多目标）',
         'conf_threshold_help': '阈值越低，检测到的目标越多（可能包含误检）',
         'max_frames': '最大分析帧数（0=无限制）',
@@ -177,7 +169,7 @@ translations = {
         'diseased': '患病',
         'pathogen_absent': '不存在',
         'pathogen_present': '存在',
-        'page_title': 'YOLO病害检测',
+        'page_title': '鱼类病害智能检测系统',
         'header_title': '鱼类寄生虫病检测',
         'header_subtitle': '图片 / 批量 / 视频 / 摄像头 / 轨迹分析 / 模糊预测 — 一站式检测台',
         'sidebar_university': '宁波大学 \n 水产动物医学综合实验室',
@@ -240,11 +232,6 @@ translations = {
         'daytime': 'Daytime',
         'nighttime': 'Nighttime',
         'no_fish_detected': 'No fish detected, cannot calculate trajectory data',
-        'model_loaded': 'Successfully loaded model: {k} -> {p}',
-        'model_not_found': 'Model file not found: {p} ({k} model)',
-        'model_switch': 'Model {k} does not exist, switched to {default_model}',
-        'no_available_model': 'No available models, please check model file path!',
-        'fallback_model': 'All models failed to load, fallback to Ich model',
         'conf_threshold': 'Detection Confidence Threshold (lower to detect more targets)',
         'conf_threshold_help': 'Lower threshold detects more targets (may include false detections)',
         'max_frames': 'Maximum Analysis Frames (0=unlimited)',
@@ -356,8 +343,73 @@ def get_health_status(average_speed: float, time_period: str) -> str:
         else:
             return diseased
 
-# ====================== 页面配置 ======================
-st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
+# ====================== 页面全局美化配置 ======================
+st.set_page_config(page_title=t('page_title'), page_icon="🐟", layout="wide")
+
+# 全局CSS美化 + 顶部大标题样式
+st.markdown("""
+<style>
+/* 整体页面背景 */
+.main {
+    background-color: #f7fbff;
+}
+/* 顶部大标题栏 */
+.top-title-box{
+    background: linear-gradient(135deg, #1677ff 0%, #40a9ff 100%);
+    padding:25px;
+    border-radius:16px;
+    text-align:center;
+    margin-bottom:25px;
+    box-shadow: 0 4px 15px rgba(22,119,255,0.2);
+}
+.top-main-title{
+    font-size:36px;
+    font-weight:bold;
+    color:#ffffff;
+    letter-spacing:2px;
+    margin:0;
+}
+.top-sub-title{
+    font-size:16px;
+    color:#e6f4ff;
+    margin-top:8px;
+}
+/* 标签页美化 */
+.stTabs [data-baseweb="tab-list"] {
+    gap:10px;
+}
+.stTabs [data-baseweb="tab"] {
+    height:50px;
+    border-radius:10px 10px 0 0;
+    font-size:15px;
+    font-weight:500;
+    background:#e8f3ff;
+}
+.stTabs [aria-selected="true"] {
+    background:#1677ff !important;
+    color:white !important;
+}
+/* 卡片样式 */
+.traj-card {background:#f0f8ff; border:1px solid #b8d4ff; border-radius:12px; padding:12px; margin:8px 0;}
+.traj-metric {font-size:18px; font-weight:bold; color:#2563eb;}
+.healthy {color:#48bb78;}
+.subhealthy {color:#ed8936;}
+.diseased {color:#e53e3e;}
+/* 按钮美化 */
+.stButton>button{
+    border-radius:8px;
+    font-weight:500;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ========== 插入顶部大标题 ==========
+st.markdown("""
+<div class="top-title-box">
+    <h1 class="top-main-title">🐟 鱼类白点病智能检测平台</h1>
+    <p class="top-sub-title">集图片识别、批量筛查、视频分析、行为轨迹与健康风险评估一体化系统</p>
+</div>
+""",unsafe_allow_html=True)
 
 # ====================== 自动发现模型文件 ======================
 BASE_DIR = Path(__file__).parent
@@ -381,7 +433,7 @@ def discover_models():
 MODEL_PATHS = discover_models()
 DEFAULT_CONF = 0.6
 
-# ====================== 模型加载（静默模式，无任何输出） ======================
+# ====================== 静默加载模型（无任何页面日志） ======================
 @st.cache_resource(show_spinner=False)
 def load_models():
     models = {}
@@ -390,7 +442,6 @@ def load_models():
             model = load_model_with_fallback(path)
             if model is not None:
                 models[key] = model
-    # 兜底
     if not models:
         models["YOLOv11n"] = YOLO("yolov11n.pt", verbose=False)
     return models
@@ -648,20 +699,7 @@ def fuzzy_predict(behavior_val: float, surf_val: float, patho_val: float) -> dic
     except Exception as e:
         return {"risk_value": 2.0, "risk_status": t("subhealthy")}
 
-# ====================== 样式 ======================
-st.markdown("""
-<style>
-.app-header {background: linear-gradient(90deg, #4F46E5 0%, #7C3AED 100%); color:white; border-radius:16px; padding:16px; text-align:center;}
-.app-title {font-size:30px; font-weight:bold;}
-.traj-card {background:#f0f8ff; border:1px solid #b8d4ff; border-radius:12px; padding:12px; margin:8px 0;}
-.traj-metric {font-size:18px; font-weight:bold; color:#2563eb;}
-.healthy {color:#48bb78;}
-.subhealthy {color:#ed8936;}
-.diseased {color:#e53e3e;}
-</style>
-""", unsafe_allow_html=True)
-
-# ====================== 界面 ======================
+# ====================== 侧边栏 ======================
 with st.sidebar:
     st.markdown(f"### 🎓 {t('sidebar_university')}")
     st.divider()
@@ -683,6 +721,7 @@ with st.sidebar:
             index=list(available_models.keys()).index(default_model)
         )
 
+# ====================== 功能标签页 ======================
 tab_img, tab_folder, tab_video, tab_camera, tab_tracking, tab_fuzzy = st.tabs([
     t('tab_image'), t('tab_batch'), t('tab_video'), t('tab_camera'), t('tab_tracking'), t('tab_fuzzy')
 ])
