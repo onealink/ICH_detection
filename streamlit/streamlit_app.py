@@ -290,7 +290,15 @@ def get_health_status(average_speed: float, time_period: str) -> str:
 
 # ====================== 页面配置 ======================
 st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
+# ====================== 模型加载（关键修改：模型键改为Behavior） ======================
+# ========== 先加这 3 行调试代码，看真实路径！ ==========
+import os
+st.write("### 当前运行目录:", os.getcwd())
+st.write("### __file__ 真实路径:", __file__)
+# ======================================================
 
+BASE_DIR = Path(__file__).parent
+st.write("### 程序认为的模型目录:", BASE_DIR)  # 再打印这个
 # ====================== 模型加载（强制使用当前目录，彻底解决路径问题） ======================
 # 直接使用文件名，不依赖任何路径
 WEIGHTS = "best.pt"
