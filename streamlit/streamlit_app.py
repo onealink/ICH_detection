@@ -292,7 +292,7 @@ def get_health_status(average_speed: float, time_period: str) -> str:
 st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 
 # ====================== 模型加载（关键修改：模型键改为Behavior） ======================
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path("/mount/src/ich_detection/streamlit")
 WEIGHTS = BASE_DIR / "best.pt"  # 多子小瓜虫病体表病征模型
 TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"  # 多子小瓜虫包囊模型
 BEHAVIOR_WEIGHTS = BASE_DIR / "guijibest.pt"  # 金鱼游动行为分析模型
