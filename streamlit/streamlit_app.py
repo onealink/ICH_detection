@@ -266,23 +266,30 @@ def get_health_status(average_speed: float, time_period: str) -> str:
 # ====================== 页面配置 ======================
 st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 
-# ====================== 模型加载（100% 兼容版） ======================
+# ====================== 模型加载（100% 修复路径） ======================
 BASE_DIR = Path("/mount/src/ich_detection/streamlit")
 
 WEIGHTS = BASE_DIR / "best.pt"
 TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"
 BEHAVIOR_WEIGHTS = BASE_DIR / "guijibest.pt"
 
+CI_SURFACE_WEIGHTS = BASE_DIR / "cybest.pt"
+CI_TOMONT_WEIGHTS = BASE_DIR / "cibest.pt"
+CROAKER_BEHAVIOR_WEIGHTS = BASE_DIR / "cyguijibest.pt"
+
 IMG_DIR = BASE_DIR / "img"
 
-# 只保留兼容、能运行的模型
 MODEL_PATHS = {
     "Ich": str(WEIGHTS),
     "Tomont": str(TOMONT_WEIGHTS),
     "Behavior": str(BEHAVIOR_WEIGHTS),
+    "CiSurface": str(CI_SURFACE_WEIGHTS),
+    "CiTomont": str(CI_TOMONT_WEIGHTS),
+    "CroakerBehavior": str(CROAKER_BEHAVIOR_WEIGHTS),
 }
 DEFAULT_CONF = 0.6
 
+# 不缓存，强制每次重新加载模型
 @st.cache_resource(show_spinner=True)
 def load_models():
     models = {}
@@ -582,7 +589,8 @@ with st.sidebar:
     st.divider()
     st.header(t('sidebar_model'))
     model_options = {
-        "Ich": t("Ich"), "Tomont": t("Tomont"), "Behavior": t("Behavior")
+        "Ich": t("Ich"), "Tomont": t("Tomont"), "Behavior": t("Behavior"),
+        "CiSurface": t("CiSurface"), "CiTomont": t("CiTomont"), "CroakerBehavior": t("CroakerBehavior")
     }
     available_models = {k: model_options[k] for k in MODELS.keys()}
     default_model = "Ich" if "Ich" in available_models else list(available_models.keys())[0]
