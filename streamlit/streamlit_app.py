@@ -1,31 +1,50 @@
-import streamlit as st
-import base64
 import io
-import json
+import math
+import time
 import zipfile
 from pathlib import Path
-from typing import List
+from typing import List, Optional
+
 import numpy as np
 import pandas as pd
-import requests
+import streamlit as st
 from PIL import Image
-from websocket import create_connection, WebSocket
-from ultralytics import YOLO
-import math  # 新增：用于计算欧氏距离
 
+# Streamlit 要求 set_page_config 尽量放在第一个 Streamlit 命令之前。
+st.set_page_config(page_title="YOLO Disease Detection", page_icon="🧪", layout="wide")
+
+# OpenCV：云端推荐使用 opencv-python-headless。
 try:
     import cv2  # noqa: F401
-
     CV2_OK = True
-except Exception:
+except Exception as e:
+    cv2 = None
     CV2_OK = False
-import skfuzzy as fuzz
-from skfuzzy import control as ctrl
-import time
+    CV2_IMPORT_ERROR = e
+
+# YOLO：避免 ultralytics 未安装或 torch 环境异常时整页直接崩溃。
+try:
+    from ultralytics import YOLO
+    YOLO_OK = True
+except Exception as e:
+    YOLO = None
+    YOLO_OK = False
+    YOLO_IMPORT_ERROR = e
+
+# scikit-fuzzy：缺失时只禁用模糊预测功能，其他页面仍可打开。
+try:
+    import skfuzzy as fuzz
+    from skfuzzy import control as ctrl
+    FUZZY_OK = True
+except Exception as e:
+    fuzz = None
+    ctrl = None
+    FUZZY_OK = False
+    FUZZY_IMPORT_ERROR = e
 
 # ====================== 语言配置（完整中英文翻译字典） ======================
-if 'language' not in st.session_state:
-    st.session_state.language = 'zh'  # 默认中文
+if "language" not in st.session_state:
+    st.session_state.language = "zh"  # 默认中文
 
 # 翻译字典（关键修改：移除日间/夜间，新增行为特征）
 translations = {
@@ -282,9 +301,6 @@ def get_health_status(average_speed: float, time_period: str) -> str:
         else:
             return diseased
 
-# ====================== 页面配置 ======================
-st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
-
 # ====================== 模型加载（关键修改：模型键改为Behavior） ======================
 BASE_DIR = Path(__file__).parent
 WEIGHTS = BASE_DIR / "best.pt"  # Ich模型
@@ -298,6 +314,10 @@ DEFAULT_CONF = 0.6  # 默认置信度
 @st.cache_resource
 def load_models():
     models = {}
+    if not YOLO_OK:
+        st.error(f"ultralytics / YOLO 加载失败：{YOLO_IMPORT_ERROR}")
+        st.info("请检查 requirements.txt 中是否包含 ultralytics、torch、torchvision，并确认 Python 版本为 3.10 或 3.11。")
+        return models
     for k, p in MODEL_PATHS.items():
         if not Path(p).exists():
             st.error(t('model_not_found').format(p=p, k=k))
@@ -350,7 +370,7 @@ def detections_to_df(res) -> pd.DataFrame:
         return res
     return pd.DataFrame()
 
-def predict_on_image(img_input, model_key: str, conf: float | None = None):
+def predict_on_image(img_input, model_key: str, conf: Optional[float] = None):
     if isinstance(img_input, (bytes, bytearray)):
         pil_img = Image.open(io.BytesIO(img_input)).convert("RGB")
     elif isinstance(img_input, Image.Image):
@@ -386,7 +406,7 @@ def predict_on_image(img_input, model_key: str, conf: float | None = None):
     return vis_pil, df
 
 # 原有视频处理函数
-def process_video(video_bytes: bytes, model_key: str, conf: float | None = None, max_frames: int | None = None) -> Path:
+def process_video(video_bytes: bytes, model_key: str, conf: Optional[float] = None, max_frames: Optional[int] = None) -> Path:
     if not CV2_OK:
         raise RuntimeError(t("video_disabled"))
     in_path = Path("input_tmp.mp4");
@@ -685,6 +705,11 @@ def build_fuzzy_sim():
 
 # 核心修改3：增加异常处理，确保所有情况都能返回结果
 def fuzzy_predict(behavior_val: float, surf_val: float, patho_val: float) -> dict:
+    if not FUZZY_OK:
+        st.warning(f"scikit-fuzzy 加载失败，已返回默认值：{FUZZY_IMPORT_ERROR}")
+        default_status = "亚健康" if st.session_state.language == "zh" else t("subhealthy")
+        return {"risk_value": 2.0, "risk_status": default_status}
+
     try:
         sim = build_fuzzy_sim()
         sim.input['behavior'] = behavior_val  # 行为特征值
