@@ -314,15 +314,8 @@ def get_health_status(average_speed: float, time_period: str) -> str:
 # ====================== 页面配置 ======================
 st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 
-
 # ====================== PP-YOLOv11 / Ultralytics 兼容补丁 ======================
 def register_custom_yolo_modules():
-    """Register custom modules before YOLO loads .pt files.
-
-    cybest.pt and cyguijibest.pt were trained with a PPBlock-improved PP-YOLOv11.
-    The registration below lets torch/ultralytics find PPBlock, C2f_PPBlock and
-    common YOLOv11 modules when loading weights in Streamlit Cloud.
-    """
     if torch is None or nn is None or F is None:
         return
 
@@ -396,17 +389,16 @@ def register_custom_yolo_modules():
                 safe_items.append(globals()["C3k2"])
             torch.serialization.add_safe_globals(safe_items)
     except Exception as e:
-        st.warning(f"Custom YOLO module registration warning: {e}")
+        pass
 
 register_custom_yolo_modules()
 
-# ====================== 模型加载（100% 修复路径） ======================
+# ====================== 模型加载（静默加载，无任何输出） ======================
 BASE_DIR = Path("/mount/src/ich_detection/streamlit")
 
 WEIGHTS = BASE_DIR / "best.pt"
 TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"
 BEHAVIOR_WEIGHTS = BASE_DIR / "guijibest.pt"
-
 CI_SURFACE_WEIGHTS = BASE_DIR / "cybest.pt"
 CI_TOMONT_WEIGHTS = BASE_DIR / "cibest.pt"
 CROAKER_BEHAVIOR_WEIGHTS = BASE_DIR / "cyguijibest.pt"
@@ -425,26 +417,16 @@ MODEL_PATHS = {
 PPBLOCK_MODEL_KEYS = {"CiSurface", "CroakerBehavior"}
 DEFAULT_CONF = 0.6
 
-# 不缓存，强制每次重新加载模型
-@st.cache_resource(show_spinner=True)
+@st.cache_resource(show_spinner=False)
 def load_models():
     models = {}
-    st.write("🔍 模型搜索路径：", BASE_DIR)
-
     for k, p in MODEL_PATHS.items():
         path = Path(p)
         if path.exists():
             try:
                 models[k] = YOLO(str(path))
-                pp_note = "（PPBlock / PP-YOLOv11）" if k in PPBLOCK_MODEL_KEYS else ""
-                st.success(f"✅ 模型加载成功：{k}{pp_note}")
-            except Exception as e:
-                st.error(f"❌ {k} 加载失败：{str(e)}")
-        else:
-            st.error(f"❌ 模型不存在：{path.name}")
-
-    if not models:
-        st.error("⚠️ 无可用模型")
+            except:
+                pass
     return models
 
 MODELS = load_models()
@@ -707,20 +689,40 @@ def fuzzy_predict(behavior_val: float, surf_val: float, patho_val: float) -> dic
         st.warning(f"{t('fuzzy_calc_error')}{str(e)}")
         return {"risk_value": 2.0, "risk_status": t("subhealthy")}
 
-# ====================== 样式 ======================
+# ====================== 页面美化 ======================
 st.markdown("""
 <style>
-.app-header {background: linear-gradient(90deg, #4F46E5 0%, #7C3AED 100%); color:white; border-radius:16px; padding:16px; text-align:center;}
-.app-title {font-size:30px; font-weight:bold;}
-.traj-card {background:#f0f8ff; border:1px solid #b8d4ff; border-radius:12px; padding:12px; margin:8px 0;}
-.traj-metric {font-size:18px; font-weight:bold; color:#2563eb;}
-.healthy {color:#48bb78;}
-.subhealthy {color:#ed8936;}
-.diseased {color:#e53e3e;}
+    .main-title {
+        font-size: 36px;
+        font-weight: bold;
+        text-align: center;
+        color: #2c3e50;
+        background: linear-gradient(90deg, #e3f2fd, #bbdefb);
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    }
+    .stButton>button {
+        border-radius: 10px;
+        height: 38px;
+        font-weight: 500;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px 8px 0 0;
+        padding: 10px 18px;
+        font-weight: 500;
+    }
+    .css-1v0mbdj {
+        border-radius: 12px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# ====================== 界面 ======================
+# ====================== 顶部大标题 ======================
+st.markdown('<div class="main-title">🐟 鱼类白点病检测平台</div>', unsafe_allow_html=True)
+
+# ====================== 侧边栏 ======================
 with st.sidebar:
     language_choice = st.radio(
         t('language_toggle_label'),
@@ -751,6 +753,7 @@ with st.sidebar:
     )
     st.markdown(f"✅ {t('sidebar_current_model')} **{available_models[model_value]}**")
 
+# ====================== 标签页 ======================
 tab_img, tab_folder, tab_video, tab_camera, tab_tracking, tab_fuzzy = st.tabs([
     t('tab_image'), t('tab_batch'), t('tab_video'), t('tab_camera'), t('tab_tracking'), t('tab_fuzzy')
 ])
