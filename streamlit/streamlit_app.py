@@ -347,30 +347,41 @@ def get_health_status(average_speed: float, time_period: str) -> str:
 # ====================== 页面配置 ======================
 st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 
-# ====================== 模型路径 ======================
+# ====================== 模型路径（自动发现） ======================
 BASE_DIR = Path(__file__).parent
 
-WEIGHTS = BASE_DIR / "best.pt"
-TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"
-BEHAVIOR_WEIGHTS = BASE_DIR / "guijibest.pt"
-CI_SURFACE_WEIGHTS = BASE_DIR / "cybest.pt"
-CI_TOMONT_WEIGHTS = BASE_DIR / "cibest.pt"
-CROAKER_BEHAVIOR_WEIGHTS = BASE_DIR / "cyguijibest.pt"
+def discover_models():
+    """自动发现 BASE_DIR 下所有 .pt 文件，并根据文件名映射显示名称"""
+    models_info = {}
+    for pt_path in BASE_DIR.glob("*.pt"):
+        name = pt_path.stem  # 不带扩展名的文件名
+        # 自定义显示名称映射（根据实际文件名调整）
+        name_map = {
+            "best": "Ich",
+            "tomont.best": "Tomont",
+            "guijibest": "Behavior",
+            "cybest": "CiSurface",
+            "cibest": "CiTomont",
+            "cyguijibest": "CroakerBehavior",
+        }
+        # 如果文件名在映射中则使用映射值，否则使用原始文件名
+        display_key = name_map.get(name, name)
+        models_info[display_key] = str(pt_path)
+    return models_info
 
-MODEL_PATHS = {
-    "Ich": str(WEIGHTS),
-    "Tomont": str(TOMONT_WEIGHTS),
-    "Behavior": str(BEHAVIOR_WEIGHTS),
-    "CiSurface": str(CI_SURFACE_WEIGHTS),
-    "CiTomont": str(CI_TOMONT_WEIGHTS),
-    "CroakerBehavior": str(CROAKER_BEHAVIOR_WEIGHTS),
-}
+MODEL_PATHS = discover_models()
 DEFAULT_CONF = 0.6
 
 # ====================== 模型加载（绝对防崩） ======================
 @st.cache_resource(show_spinner=True)
 def load_models():
     models = {}
+    # 如果未发现任何模型文件，直接使用官方 YOLOv11n
+    if not MODEL_PATHS:
+        st.warning("⚠️ 未找到任何 .pt 模型文件，自动加载官方 YOLOv11n")
+        models["YOLOv11n"] = YOLO("yolov11n.pt")
+        return models
+    
     for k, p in MODEL_PATHS.items():
         path = Path(p)
         if path.exists():
@@ -378,13 +389,13 @@ def load_models():
                 models[k] = safe_load_yolo(str(path))
                 st.success(f"✅ {k} 加载成功")
             except Exception as e:
-                st.error(f"❌ {k} 加载失败")
+                st.error(f"❌ {k} 加载失败: {str(e)[:100]}")
         else:
-            st.info(f"ℹ️ {k} 模型文件不存在")
-
-    # 终极兜底：永远保证有模型可用
+            st.info(f"ℹ️ {k} 模型文件不存在: {p}")
+    
+    # 终极兜底：如果所有自定义模型都加载失败，使用官方 YOLOv11n
     if not models:
-        st.warning("⚠️ 未找到任何自定义模型，自动加载官方YOLOv11n")
+        st.warning("⚠️ 所有自定义模型加载失败，自动加载官方 YOLOv11n")
         models["YOLOv11n"] = YOLO("yolov11n.pt")
     return models
 
@@ -657,17 +668,19 @@ with st.sidebar:
     st.markdown(f"### 🎓 {t('sidebar_university')}")
     st.divider()
     st.header(t('sidebar_model'))
-    model_options = {
+    # 模型显示名称映射
+    model_display_names = {
         "Ich": t("Ich"), "Tomont": t("Tomont"), "Behavior": t("Behavior"),
-        "CiSurface": t("CiSurface"), "CiTomont": t("CiTomont"), "CroakerBehavior": t("CroakerBehavior")
+        "CiSurface": t("CiSurface"), "CiTomont": t("CiTomont"), "CroakerBehavior": t("CroakerBehavior"),
+        "YOLOv11n": "YOLOv11n (Fallback)"
     }
-    available_models = {k: model_options[k] for k in MODELS.keys()}
+    available_models = {k: model_display_names.get(k, k) for k in MODELS.keys()}
     
     # 修复 IndexError 核心代码
     if available_models:
         default_model = list(available_models.keys())[0]
     else:
-        available_models = {"YOLOv11n": "YOLOv11n"}
+        available_models = {"YOLOv11n": "YOLOv11n (Fallback)"}
         default_model = "YOLOv11n"
 
     model_value = st.selectbox(
@@ -676,7 +689,7 @@ with st.sidebar:
         format_func=lambda x: available_models[x],
         index=list(available_models.keys()).index(default_model)
     )
-    st.markdown(f"✅ 当前模型：**{available_models[model_value]}**")
+    st.markdown(f"✅ {t('sidebar_current_model')} **{available_models[model_value]}**")
 
 tab_img, tab_folder, tab_video, tab_camera, tab_tracking, tab_fuzzy = st.tabs([
     t('tab_image'), t('tab_batch'), t('tab_video'), t('tab_camera'), t('tab_tracking'), t('tab_fuzzy')
@@ -701,9 +714,9 @@ with tab_img:
 
 # 批量
 with tab_folder:
-    st.markdown("#### 批量检测")
-    files = st.file_uploader("上传多张图片", accept_multiple_files=True, key="batch_upload_imgs")
-    go = st.button("开始批量检测", disabled=not files or model_value is None, key="btn_batch_run")
+    st.markdown(f"#### {t('tab_batch')}")
+    files = st.file_uploader(t('batch_upload'), accept_multiple_files=True, key="batch_upload_imgs")
+    go = st.button(t('batch_run'), disabled=not files or model_value is None, key="btn_batch_run")
     if go and files:
         all_tables = []
         out_imgs = []
@@ -722,65 +735,66 @@ with tab_folder:
 
 # 视频
 with tab_video:
-    st.markdown("#### 视频检测")
-    vid_file = st.file_uploader("上传检测视频", type=["mp4", "mov", "avi", "mkv"], key="video_upload_detect")
-    run = st.button("开始检测", disabled=vid_file is None or not CV2_OK or model_value is None, key="btn_video_detect")
+    st.markdown(f"#### {t('tab_video')}")
+    vid_file = st.file_uploader(t('video_upload'), type=["mp4", "mov", "avi", "mkv"], key="video_upload_detect")
+    run = st.button(t('video_run'), disabled=vid_file is None or not CV2_OK or model_value is None, key="btn_video_detect")
     if run and vid_file:
-        with st.spinner("处理中..."):
+        with st.spinner(t('video_processing')):
             out_path = process_video(vid_file.getvalue(), model_value)
-        st.success("处理完成")
-        st.download_button("下载视频", open(out_path, "rb").read(), file_name=out_path.name, key="dl_video_result")
+        st.success(t('video_process_complete'))
+        st.download_button(t('video_download'), open(out_path, "rb").read(), file_name=out_path.name, key="dl_video_result")
 
 # 摄像头
 with tab_camera:
-    st.markdown("#### 摄像头检测")
+    st.markdown(f"#### {t('camera_title')}")
     if "cam_on" not in st.session_state:
         st.session_state.cam_on = False
     if not st.session_state.cam_on:
-        if st.button("打开摄像头", key="btn_cam_open"):
+        if st.button(t('camera_open'), key="btn_cam_open"):
             st.session_state.cam_on = True
             st.rerun()
     else:
-        if st.button("关闭摄像头", key="btn_cam_close"):
+        if st.button(t('camera_close'), key="btn_cam_close"):
             st.session_state.cam_on = False
             st.rerun()
-        snap = st.camera_input("拍照", key="cam_input_take")
-        if snap and st.button("检测", key="btn_cam_detect"):
+        snap = st.camera_input(t('camera_shot'), key="cam_input_take")
+        if snap and st.button(t('camera_detect'), key="btn_cam_detect"):
             det_img, df = predict_on_image(snap.getvalue(), model_value)
             st.image(det_img)
             st.dataframe(df)
 
 # 轨迹
 with tab_tracking:
-    st.markdown("#### 🐠 轨迹分析")
-    vid_file = st.file_uploader("上传轨迹分析视频", type=["mp4", "mov", "avi", "mkv"], key="video_upload_traj")
-    conf = st.slider("置信度", 0.1, 1.0, 0.3, key="slider_traj_conf")
-    time_period = st.selectbox("时间段", [t("日间"), t("夜间")], key="select_traj_time")
-    run = st.button("开始分析", disabled=vid_file is None or not CV2_OK or model_value is None, key="btn_traj_run")
+    st.markdown(f"#### 🐠 {t('tracking_title')}")
+    vid_file = st.file_uploader(t('tracking_upload'), type=["mp4", "mov", "avi", "mkv"], key="video_upload_traj")
+    conf = st.slider(t('conf_threshold'), 0.1, 1.0, 0.3, key="slider_traj_conf")
+    time_period = st.selectbox(t("time_period"), [t("daytime"), t("nighttime")], key="select_traj_time")
+    run = st.button(t('tracking_run'), disabled=vid_file is None or not CV2_OK or model_value is None, key="btn_traj_run")
     if run and vid_file:
         res = calculate_fish_trajectory(vid_file.getvalue(), model_value, conf)
         if res["success"]:
             health = get_health_status(res["average_speed"], time_period)
-            st.metric("总路程", res["total_distance"])
-            st.metric("平均速度", res["average_speed"])
-            st.metric("健康状态", health)
+            col1, col2, col3 = st.columns(3)
+            col1.metric(t('total_distance'), res["total_distance"])
+            col2.metric(t('average_speed'), res["average_speed"])
+            col3.metric(t('health_status'), health)
             if res["processed_video_path"]:
                 with open(res["processed_video_path"], "rb") as f:
-                    st.download_button("下载轨迹视频", f, file_name=Path(res["processed_video_path"]).name)
+                    st.download_button(t('download_traj_video'), f, file_name=Path(res["processed_video_path"]).name)
 
 # 模糊
 with tab_fuzzy:
-    st.markdown("#### 模糊预测")
+    st.markdown(f"#### {t('fuzzy_title')}")
     col1, col2, col3 = st.columns(3)
     with col1:
-        b = st.selectbox("行为", ["健康", "亚健康", "患病"], key="fuzzy_behavior")
+        b = st.selectbox(t('fuzzy_behavior'), [t("healthy"), t("subhealthy"), t("diseased")], key="fuzzy_behavior")
     with col2:
-        s = st.selectbox("体表", ["健康", "患病"], key="fuzzy_surface")
+        s = st.selectbox(t('fuzzy_surface'), [t("healthy"), t("diseased")], key="fuzzy_surface")
     with col3:
-        p = st.selectbox("病原", ["不存在", "存在"], key="fuzzy_pathogen")
-    bv = 1 if b == "健康" else 2 if b == "亚健康" else 3
-    sv = 1 if s == "健康" else 3
-    pv = 1 if p == "不存在" else 3
-    if st.button("预测", key="btn_fuzzy_predict"):
+        p = st.selectbox(t('fuzzy_pathogen'), [t("pathogen_absent"), t("pathogen_present")], key="fuzzy_pathogen")
+    bv = 1 if b == t("healthy") else 2 if b == t("subhealthy") else 3
+    sv = 1 if s == t("healthy") else 3
+    pv = 1 if p == t("pathogen_absent") else 3
+    if st.button(t('fuzzy_predict'), key="btn_fuzzy_predict"):
         r = fuzzy_predict(bv, sv, pv)
-        st.success(f"风险值：{r['risk_value']}，状态：{r['risk_status']}")
+        st.success(t('fuzzy_result').format(risk_value=r['risk_value'], risk_status=r['risk_status']))
