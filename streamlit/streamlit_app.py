@@ -77,16 +77,38 @@ class C2f_PPBlock(nn.Module):
         out = self.cv3_act(out)
 
         if self.shortcut:
-            out = out + x
+            out = out + x[:, :self.c * 2] if x.shape[1] == self.c * 2 else out + x
         return out
 
+# ====================== 注册自定义模块以支持改进模型加载 ======================
+import sys
+import types
+import ultralytics.nn.modules as nn_modules
+
+def register_custom_modules():
+    """注册自定义模块到 ultralytics 系统中，以便模型能正确反序列化"""
+    # 将类添加到 ultralytics.nn.modules 中
+    if not hasattr(nn_modules, 'C2f_PPBlock'):
+        setattr(nn_modules, 'C2f_PPBlock', C2f_PPBlock)
+    if not hasattr(nn_modules, 'PPBlock'):
+        setattr(nn_modules, 'PPBlock', PPBlock)
+    
+    # 模拟 ultralytics.nn.modules.c2f_ppblock 模块（模型可能引用此路径）
+    module_name = 'ultralytics.nn.modules.c2f_ppblock'
+    if module_name not in sys.modules:
+        fake_module = types.ModuleType(module_name)
+        fake_module.C2f_PPBlock = C2f_PPBlock
+        fake_module.PPBlock = PPBlock
+        sys.modules[module_name] = fake_module
+
 def load_model_with_fallback(model_path: str):
-    """兼容 PyTorch 旧版本的模型加载（移除 add_safe_globals）"""
+    """兼容 PyTorch 旧版本的模型加载（注册自定义模块）"""
+    register_custom_modules()
     try:
         model = YOLO(model_path, task="detect")
         return model
     except Exception as e:
-        # 某些改进模型可能需要二次加载（自定义类已定义）
+        # 某些改进模型可能需要二次加载
         try:
             model = YOLO(model_path, task="detect")
             return model
@@ -371,7 +393,7 @@ def discover_models():
 MODEL_PATHS = discover_models()
 DEFAULT_CONF = 0.6
 
-# ====================== 模型加载（兼容旧版 PyTorch） ======================
+# ====================== 模型加载（兼容旧版 PyTorch + 自定义模块） ======================
 @st.cache_resource(show_spinner=True)
 def load_models():
     models = {}
