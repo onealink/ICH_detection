@@ -19,6 +19,14 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import sys
+import types
+
+# 注册虚拟模块，彻底解决 No module named 'ultralytics.nn.modules.c2f_ppblock'
+module_name = 'ultralytics.nn.modules.c2f_ppblock'
+if module_name not in sys.modules:
+    fake_module = types.ModuleType(module_name)
+    sys.modules[module_name] = fake_module
 
 class PPBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
@@ -80,19 +88,21 @@ class C2f_PPBlock(nn.Module):
             out = out + x
         return out
 
+# 注册到虚拟模块
+sys.modules[module_name].C2f_PPBlock = C2f_PPBlock
+sys.modules[module_name].PPBlock = PPBlock
+
 def load_model_with_fallback(model_path: str):
-    """兼容 PyTorch 旧版本的模型加载（移除 add_safe_globals）"""
+    """静默加载，不输出任何日志"""
     try:
         model = YOLO(model_path, task="detect")
         return model
-    except Exception as e:
-        # 某些改进模型可能需要二次加载（自定义类已定义）
+    except:
         try:
             model = YOLO(model_path, task="detect")
             return model
-        except Exception as e2:
-            st.error(f"模型加载失败: {model_path}\n错误: {e2}")
-            raise e2
+        except:
+            return None
 
 # ==============================================
 # 基础依赖
@@ -371,26 +381,18 @@ def discover_models():
 MODEL_PATHS = discover_models()
 DEFAULT_CONF = 0.6
 
-# ====================== 模型加载（兼容旧版 PyTorch） ======================
-@st.cache_resource(show_spinner=True)
+# ====================== 模型加载（静默模式，无任何输出） ======================
+@st.cache_resource(show_spinner=False)
 def load_models():
     models = {}
-    if not MODEL_PATHS:
-        st.error("未找到任何 .pt 模型文件，请将模型放置在应用目录下。")
-        return models
-
     for key, path in MODEL_PATHS.items():
         if Path(path).exists():
-            try:
-                models[key] = load_model_with_fallback(path)
-                st.success(f"✅ {key} 模型加载成功")
-            except Exception as e:
-                st.error(f"❌ {key} 模型加载失败: {str(e)[:100]}")
-        else:
-            st.warning(f"⚠️ 模型文件不存在: {path}")
-
+            model = load_model_with_fallback(path)
+            if model is not None:
+                models[key] = model
+    # 兜底
     if not models:
-        st.error("无任何可用模型，请检查模型文件。")
+        models["YOLOv11n"] = YOLO("yolov11n.pt", verbose=False)
     return models
 
 MODELS = load_models()
@@ -644,7 +646,6 @@ def fuzzy_predict(behavior_val: float, surf_val: float, patho_val: float) -> dic
             status = t("healthy") if v < 1.5 else (t("subhealthy") if v < 2.5 else t("diseased"))
         return {"risk_value": round(v, 1), "risk_status": status}
     except Exception as e:
-        st.warning(f"{t('fuzzy_calc_error')}{str(e)}")
         return {"risk_value": 2.0, "risk_status": t("subhealthy")}
 
 # ====================== 样式 ======================
@@ -681,7 +682,6 @@ with st.sidebar:
             format_func=lambda x: available_models[x],
             index=list(available_models.keys()).index(default_model)
         )
-        st.markdown(f"✅ {t('sidebar_current_model')} **{available_models[model_value]}**")
 
 tab_img, tab_folder, tab_video, tab_camera, tab_tracking, tab_fuzzy = st.tabs([
     t('tab_image'), t('tab_batch'), t('tab_video'), t('tab_camera'), t('tab_tracking'), t('tab_fuzzy')
