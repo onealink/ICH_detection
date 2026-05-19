@@ -1,4 +1,4 @@
-streamlit==1.36.0
+streamlit==1.37.0
 rich==13.7.1
 
 numpy==1.26.4
