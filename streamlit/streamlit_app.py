@@ -105,7 +105,7 @@ translations = {
         'pathogen_present': '存在',
         # 原有基础翻译
         'page_title': 'YOLO病害检测',
-        'header_title': '鱼类寄生虫病检测',
+        'header_title': '鱼类白点病检测',
         'header_subtitle': '图片 / 批量 / 视频 / 摄像头 / 轨迹分析 / 模糊预测 — 一站式检测台',
         'sidebar_university': '宁波大学 \n 水产动物医学综合实验室',
         'sidebar_model': '🧠 模型与参数',
