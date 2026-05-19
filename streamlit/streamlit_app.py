@@ -110,7 +110,7 @@ translations = {
         'batch_no_results': '未检测到目标。',
         'batch_download_excel': '📥 下载 Excel（批量检测表）',
         'batch_download_zip': '🗜️ 打包下载 标注图片ZIP',
-        'video_upload': '上传视频',
+        'video_upload': '上传检测视频',
         'video_run': '🚀 开始视频检测',
         'video_disabled': '当前云端环境未能加载 OpenCV（cv2），视频处理功能已禁用。请在本地运行或安装支持的 OpenCV 版本。',
         'video_processing': '本地视频处理...（按 CPU 速度可能较慢）',
@@ -606,11 +606,11 @@ with tab_img:
     st.markdown(f"#### {t('tab_image')}")
     col1, col2 = st.columns(2)
     with col1:
-        img_file = st.file_uploader(t('image_upload'), type=["jpg", "jpeg", "png", "bmp", "webp"])
+        img_file = st.file_uploader(t('image_upload'), type=["jpg", "jpeg", "png", "bmp", "webp"], key="img_upload_single")
         if img_file:
             st.image(Image.open(img_file), use_column_width=True)
     with col2:
-        run = st.button(t('image_run'), type="primary", disabled=img_file is None or model_value is None)
+        run = st.button(t('image_run'), type="primary", disabled=img_file is None or model_value is None, key="btn_img_single")
         if run and img_file:
             with st.spinner("检测中..."):
                 det_img, df = predict_on_image(img_file.getvalue(), model_value)
@@ -621,8 +621,8 @@ with tab_img:
 # 批量
 with tab_folder:
     st.markdown("#### 批量检测")
-    files = st.file_uploader("上传多张图片", accept_multiple_files=True)
-    go = st.button("开始批量检测", disabled=not files or model_value is None)
+    files = st.file_uploader("上传多张图片", accept_multiple_files=True, key="batch_upload_imgs")
+    go = st.button("开始批量检测", disabled=not files or model_value is None, key="btn_batch_run")
     if go and files:
         all_tables = []
         out_imgs = []
@@ -642,13 +642,13 @@ with tab_folder:
 # 视频
 with tab_video:
     st.markdown("#### 视频检测")
-    vid_file = st.file_uploader("上传视频", type=["mp4", "mov", "avi", "mkv"])
-    run = st.button("开始检测", disabled=vid_file is None or not CV2_OK or model_value is None)
+    vid_file = st.file_uploader("上传检测视频", type=["mp4", "mov", "avi", "mkv"], key="video_upload_detect")
+    run = st.button("开始检测", disabled=vid_file is None or not CV2_OK or model_value is None, key="btn_video_detect")
     if run and vid_file:
         with st.spinner("处理中..."):
             out_path = process_video(vid_file.getvalue(), model_value)
         st.success("处理完成")
-        st.download_button("下载视频", open(out_path, "rb").read(), file_name=out_path.name)
+        st.download_button("下载视频", open(out_path, "rb").read(), file_name=out_path.name, key="dl_video_result")
 
 # 摄像头
 with tab_camera:
@@ -656,15 +656,15 @@ with tab_camera:
     if "cam_on" not in st.session_state:
         st.session_state.cam_on = False
     if not st.session_state.cam_on:
-        if st.button("打开摄像头"):
+        if st.button("打开摄像头", key="btn_cam_open"):
             st.session_state.cam_on = True
             st.rerun()
     else:
-        if st.button("关闭摄像头"):
+        if st.button("关闭摄像头", key="btn_cam_close"):
             st.session_state.cam_on = False
             st.rerun()
-        snap = st.camera_input("拍照")
-        if snap and st.button("检测"):
+        snap = st.camera_input("拍照", key="cam_input_take")
+        if snap and st.button("检测", key="btn_cam_detect"):
             det_img, df = predict_on_image(snap.getvalue(), model_value)
             st.image(det_img)
             st.dataframe(df)
@@ -672,10 +672,10 @@ with tab_camera:
 # 轨迹
 with tab_tracking:
     st.markdown("#### 🐠 轨迹分析")
-    vid_file = st.file_uploader("上传视频", type=["mp4", "mov", "avi", "mkv"])
-    conf = st.slider("置信度", 0.1, 1.0, 0.3)
-    time_period = st.selectbox("时间段", [t("日间"), t("夜间")])
-    run = st.button("开始分析", disabled=vid_file is None or not CV2_OK or model_value is None)
+    vid_file = st.file_uploader("上传轨迹分析视频", type=["mp4", "mov", "avi", "mkv"], key="video_upload_traj")
+    conf = st.slider("置信度", 0.1, 1.0, 0.3, key="slider_traj_conf")
+    time_period = st.selectbox("时间段", [t("日间"), t("夜间")], key="select_traj_time")
+    run = st.button("开始分析", disabled=vid_file is None or not CV2_OK or model_value is None, key="btn_traj_run")
     if run and vid_file:
         res = calculate_fish_trajectory(vid_file.getvalue(), model_value, conf)
         if res["success"]:
@@ -689,14 +689,14 @@ with tab_fuzzy:
     st.markdown("#### 模糊预测")
     col1, col2, col3 = st.columns(3)
     with col1:
-        b = st.selectbox("行为", ["健康", "亚健康", "患病"])
+        b = st.selectbox("行为", ["健康", "亚健康", "患病"], key="fuzzy_behavior")
     with col2:
-        s = st.selectbox("体表", ["健康", "患病"])
+        s = st.selectbox("体表", ["健康", "患病"], key="fuzzy_surface")
     with col3:
-        p = st.selectbox("病原", ["不存在", "存在"])
+        p = st.selectbox("病原", ["不存在", "存在"], key="fuzzy_pathogen")
     bv = 1 if b == "健康" else 2 if b == "亚健康" else 3
     sv = 1 if s == "健康" else 3
     pv = 1 if p == "不存在" else 3
-    if st.button("预测"):
+    if st.button("预测", key="btn_fuzzy_predict"):
         r = fuzzy_predict(bv, sv, pv)
         st.success(f"风险值：{r['risk_value']}，状态：{r['risk_status']}")
