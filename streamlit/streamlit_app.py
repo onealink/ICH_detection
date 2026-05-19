@@ -291,28 +291,28 @@ def get_health_status(average_speed: float, time_period: str) -> str:
 # ====================== 页面配置 ======================
 st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 
-# ====================== 模型加载（关键修改：模型键改为Behavior） ======================
-BASE_DIR = Path("/mount/src/ich_detection/streamlit")
-WEIGHTS = BASE_DIR / "best.pt"  # 多子小瓜虫病体表病征模型
-TOMONT_WEIGHTS = BASE_DIR / "tomont.best.pt"  # 多子小瓜虫包囊模型
-BEHAVIOR_WEIGHTS = BASE_DIR / "guijibest.pt"  # 金鱼游动行为分析模型
+# ====================== 模型加载（强制使用当前目录，彻底解决路径问题） ======================
+# 直接使用文件名，不依赖任何路径
+WEIGHTS = "best.pt"
+TOMONT_WEIGHTS = "tomont.best.pt"
+BEHAVIOR_WEIGHTS = "guijibest.pt"
 
-CI_SURFACE_WEIGHTS = BASE_DIR / "cybest.pt"  # 刺激隐核虫病体表病症模型
-CI_TOMONT_WEIGHTS = BASE_DIR / "cibest.pt"  # 刺激隐核虫包囊模型
-CROAKER_BEHAVIOR_WEIGHTS = BASE_DIR / "cyguijibest.pt"  # 大黄鱼游动行为分析模型
+CI_SURFACE_WEIGHTS = "cybest.pt"
+CI_TOMONT_WEIGHTS = "cibest.pt"
+CROAKER_BEHAVIOR_WEIGHTS = "cyguijibest.pt"
 
-IMG_DIR = BASE_DIR / "img"
+IMG_DIR = "img"
 
-# 模型路径字典：key 为程序内部模型名，value 为模型文件路径。
+# 模型路径字典
 MODEL_PATHS = {
-    "Ich": str(WEIGHTS),
-    "Tomont": str(TOMONT_WEIGHTS),
-    "Behavior": str(BEHAVIOR_WEIGHTS),
-    "CiSurface": str(CI_SURFACE_WEIGHTS),
-    "CiTomont": str(CI_TOMONT_WEIGHTS),
-    "CroakerBehavior": str(CROAKER_BEHAVIOR_WEIGHTS),
+    "Ich": WEIGHTS,
+    "Tomont": TOMONT_WEIGHTS,
+    "Behavior": BEHAVIOR_WEIGHTS,
+    "CiSurface": CI_SURFACE_WEIGHTS,
+    "CiTomont": CI_TOMONT_WEIGHTS,
+    "CroakerBehavior": CROAKER_BEHAVIOR_WEIGHTS,
 }
-DEFAULT_CONF = 0.6  # 默认置信度
+DEFAULT_CONF = 0.6
 
 @st.cache_resource
 def load_models():
