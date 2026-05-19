@@ -72,9 +72,9 @@ translations = {
         'model_label': '模型：',
         'health_status_label': '健康程度：',
         # 模型名称翻译（关键修改：Behavior对应中文）
-        'Ich': '多子小瓜虫体表病征',
+        'Ich': '多子小瓜虫病体表病征',
         'Tomont': '多子小瓜虫包囊',
-        'Behavior': '鱼游动行为分析',
+        'Behavior': '金鱼游动行为分析',
         'CiSurface': '刺激隐核虫病体表病症',
         'CiTomont': '刺激隐核虫包囊',
         'CroakerBehavior': '大黄鱼游动行为分析',
