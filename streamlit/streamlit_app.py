@@ -81,24 +81,17 @@ class C2f_PPBlock(nn.Module):
         return out
 
 def load_model_with_fallback(model_path: str):
-    """
-    尝试加载模型：
-    1. 先用标准 YOLO 加载（适用于官方 YOLOv11 模型）
-    2. 如果失败，注册自定义模块后重试（适用于 PP‑YOLOv11 改进模型）
-    """
+    """兼容 PyTorch 旧版本的模型加载（移除 add_safe_globals）"""
     try:
-        # 第一次尝试：标准加载
         model = YOLO(model_path, task="detect")
         return model
     except Exception as e:
-        # 如果失败，可能是因为缺少自定义模块
+        # 某些改进模型可能需要二次加载（自定义类已定义）
         try:
-            import torch.serialization
-            torch.serialization.add_safe_globals([C2f_PPBlock, PPBlock])
             model = YOLO(model_path, task="detect")
             return model
         except Exception as e2:
-            st.error(f"模型加载失败（标准与自定义均失败）: {model_path}\n错误: {e2}")
+            st.error(f"模型加载失败: {model_path}\n错误: {e2}")
             raise e2
 
 # ==============================================
@@ -113,7 +106,6 @@ import skfuzzy as fuzz
 from skfuzzy import control as ctrl
 import time
 
-# 清除旧缓存
 @st.cache_resource(show_spinner=False)
 def clear_cache():
     return None
@@ -358,12 +350,10 @@ def get_health_status(average_speed: float, time_period: str) -> str:
 st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 
 # ====================== 自动发现模型文件 ======================
-BASE_DIR = Path(__file__).parent  # 自动获取脚本所在目录（无需硬编码）
+BASE_DIR = Path(__file__).parent
 
 def discover_models():
-    """自动发现 BASE_DIR 下所有 .pt 文件，并返回 {显示键: 文件路径} 映射"""
     models_info = {}
-    # 定义文件名到显示键的映射（根据您的文件命名）
     name_map = {
         "best": "Ich",
         "tomont.best": "Tomont",
@@ -374,14 +364,14 @@ def discover_models():
     }
     for pt_path in BASE_DIR.glob("*.pt"):
         name = pt_path.stem
-        display_key = name_map.get(name, name)  # 如果未在映射中则用原始文件名
+        display_key = name_map.get(name, name)
         models_info[display_key] = str(pt_path)
     return models_info
 
 MODEL_PATHS = discover_models()
 DEFAULT_CONF = 0.6
 
-# ====================== 模型加载（智能区分标准/PP‑YOLOv11） ======================
+# ====================== 模型加载（兼容旧版 PyTorch） ======================
 @st.cache_resource(show_spinner=True)
 def load_models():
     models = {}
@@ -392,7 +382,6 @@ def load_models():
     for key, path in MODEL_PATHS.items():
         if Path(path).exists():
             try:
-                # 使用带回退的加载函数（自动处理标准模型和PP‑YOLOv11模型）
                 models[key] = load_model_with_fallback(path)
                 st.success(f"✅ {key} 模型加载成功")
             except Exception as e:
@@ -676,7 +665,6 @@ with st.sidebar:
     st.markdown(f"### 🎓 {t('sidebar_university')}")
     st.divider()
     st.header(t('sidebar_model'))
-    # 模型显示名称映射
     model_display_names = {
         "Ich": t("Ich"), "Tomont": t("Tomont"), "Behavior": t("Behavior"),
         "CiSurface": t("CiSurface"), "CiTomont": t("CiTomont"), "CroakerBehavior": t("CroakerBehavior"),
