@@ -1,4 +1,3 @@
-import streamlit as st
 import base64
 import io
 import json
@@ -14,15 +13,12 @@ from ultralytics import YOLO
 import math
 
 # ==============================================
-# 🔥 核心修复：PP-YOLOv11 自定义模块 + PyTorch 安全注册
+# PP‑YOLOv11 自定义模块（用于加载改进模型）
 # ==============================================
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import sys
-import types
 
-# 自定义模块定义
 class PPBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
@@ -83,45 +79,41 @@ class C2f_PPBlock(nn.Module):
             out = out + x[:, :self.c * 2] if x.shape[1] == self.c * 2 else out + x
         return out
 
-# ======================
-# 🔥 终极修复：注册到 PyTorch 安全全局 + 虚拟模块
-# ======================
-def register_custom_modules_for_yolo():
-    # 1. PyTorch 安全全局注册（必须！解决加载报错）
-    torch.serialization.add_safe_globals([C2f_PPBlock, PPBlock])
+# ====================== 注册自定义模块以支持改进模型加载 ======================
+import sys
+import types
+import ultralytics.nn.modules as nn_modules
 
-    # 2. 创建虚拟模块：ultralytics.nn.modules.c2f_ppblock
-    module_path = "ultralytics.nn.modules.c2f_ppblock"
-    if module_path not in sys.modules:
-        fake_mod = types.ModuleType(module_path)
-        fake_mod.C2f_PPBlock = C2f_PPBlock
-        fake_mod.PPBlock = PPBlock
-        sys.modules[module_path] = fake_mod
+def register_custom_modules():
+    """注册自定义模块到 ultralytics 系统中，以便模型能正确反序列化"""
+    # 将类添加到 ultralytics.nn.modules 中
+    if not hasattr(nn_modules, 'C2f_PPBlock'):
+        setattr(nn_modules, 'C2f_PPBlock', C2f_PPBlock)
+    if not hasattr(nn_modules, 'PPBlock'):
+        setattr(nn_modules, 'PPBlock', PPBlock)
+    
+    # 模拟 ultralytics.nn.modules.c2f_ppblock 模块（模型可能引用此路径）
+    module_name = 'ultralytics.nn.modules.c2f_ppblock'
+    if module_name not in sys.modules:
+        fake_module = types.ModuleType(module_name)
+        fake_module.C2f_PPBlock = C2f_PPBlock
+        fake_module.PPBlock = PPBlock
+        sys.modules[module_name] = fake_module
 
-    # 3. 兼容其他可能的路径
-    alt_paths = [
-        "ultralytics.nn.C2f_PPBlock",
-        "ultralytics.nn.modules.ppblock"
-    ]
-    for p in alt_paths:
-        if p not in sys.modules:
-            m = types.ModuleType(p)
-            m.C2f_PPBlock = C2f_PPBlock
-            m.PPBlock = PPBlock
-            sys.modules[p] = m
-
-# 程序启动立即注册
-register_custom_modules_for_yolo()
-
-# ==============================================
-# 模型加载函数（带兜底）
-# ==============================================
-def load_model_safe(model_path: str):
+def load_model_with_fallback(model_path: str):
+    """兼容 PyTorch 旧版本的模型加载（注册自定义模块）"""
+    register_custom_modules()
     try:
-        return YOLO(model_path, task="detect")
+        model = YOLO(model_path, task="detect")
+        return model
     except Exception as e:
-        st.warning(f"模型加载失败，自动切换官方YOLOv11n：{str(e)[:60]}")
-        return YOLO("yolov11n.pt")
+        # 某些改进模型可能需要二次加载
+        try:
+            model = YOLO(model_path, task="detect")
+            return model
+        except Exception as e2:
+            st.error(f"模型加载失败: {model_path}\n错误: {e2}")
+            raise e2
 
 # ==============================================
 # 基础依赖
@@ -378,7 +370,7 @@ def get_health_status(average_speed: float, time_period: str) -> str:
 # ====================== 页面配置 ======================
 st.set_page_config(page_title=t('page_title'), page_icon="🧪", layout="wide")
 
-# ====================== 自动发现模型 ======================
+# ====================== 自动发现模型文件 ======================
 BASE_DIR = Path(__file__).parent
 
 def discover_models():
@@ -400,21 +392,26 @@ def discover_models():
 MODEL_PATHS = discover_models()
 DEFAULT_CONF = 0.6
 
-# ====================== 加载所有模型 ======================
+# ====================== 模型加载（兼容旧版 PyTorch + 自定义模块） ======================
 @st.cache_resource(show_spinner=True)
 def load_models():
     models = {}
+    if not MODEL_PATHS:
+        st.error("未找到任何 .pt 模型文件，请将模型放置在应用目录下。")
+        return models
+
     for key, path in MODEL_PATHS.items():
         if Path(path).exists():
             try:
-                models[key] = load_model_safe(path)
-                st.success(f"✅ {key} 加载成功")
+                models[key] = load_model_with_fallback(path)
+                st.success(f"✅ {key} 模型加载成功")
             except Exception as e:
-                st.error(f"❌ {key} 加载失败：{str(e)[:80]}")
-    # 兜底：永远有模型可用
+                st.error(f"❌ {key} 模型加载失败: {str(e)[:100]}")
+        else:
+            st.warning(f"⚠️ 模型文件不存在: {path}")
+
     if not models:
-        st.warning("⚠️ 自动加载官方YOLOv11n模型")
-        models["YOLOv11n"] = YOLO("yolov11n.pt")
+        st.error("无任何可用模型，请检查模型文件。")
     return models
 
 MODELS = load_models()
@@ -472,7 +469,10 @@ def predict_on_image(img_input, model_key: str, conf: float | None = None):
 
     c = float(conf) if conf is not None else DEFAULT_CONF
     if model_key not in MODELS:
-        model_key = list(MODELS.keys())[0]
+        default_model = list(MODELS.keys())[0] if MODELS else None
+        model_key = default_model
+    if not model_key:
+        raise RuntimeError(t('no_available_model'))
     r = MODELS[model_key].predict(source=pil_img, conf=c, imgsz=640, verbose=False)[0]
     im_bgr = r.plot()
     im_rgb = im_bgr[..., ::-1]
