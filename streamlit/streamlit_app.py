@@ -11,8 +11,12 @@ import pandas as pd
 import requests
 from PIL import Image
 from websocket import create_connection, WebSocket
-from ultralytics import YOLO
 import math
+import time
+import gc
+
+# 强制清理内存
+gc.collect()
 
 try:
     import torch
@@ -28,9 +32,9 @@ try:
     CV2_OK = True
 except Exception:
     CV2_OK = False
+
 import skfuzzy as fuzz
 from skfuzzy import control as ctrl
-import time
 
 # ====================== 正确清除缓存 ======================
 @st.cache_resource(show_spinner=False)
@@ -393,7 +397,9 @@ def register_custom_yolo_modules():
 
 register_custom_yolo_modules()
 
-# ====================== 模型加载（静默加载，无任何输出） ======================
+# ====================== 模型加载（强制显示6个，不自动过滤） ======================
+from ultralytics import YOLO
+
 BASE_DIR = Path("/mount/src/ich_detection/streamlit")
 
 WEIGHTS = BASE_DIR / "best.pt"
@@ -405,6 +411,7 @@ CROAKER_BEHAVIOR_WEIGHTS = BASE_DIR / "cyguijibest.pt"
 
 IMG_DIR = BASE_DIR / "img"
 
+# 6个模型全部强制显示，不删除、不过滤
 MODEL_ORDER = ["Ich", "Tomont", "Behavior", "CiSurface", "CiTomont", "CroakerBehavior"]
 MODEL_PATHS = {
     "Ich": str(WEIGHTS),
@@ -414,19 +421,18 @@ MODEL_PATHS = {
     "CiTomont": str(CI_TOMONT_WEIGHTS),
     "CroakerBehavior": str(CROAKER_BEHAVIOR_WEIGHTS),
 }
-PPBLOCK_MODEL_KEYS = {"CiSurface", "CroakerBehavior"}
+
 DEFAULT_CONF = 0.6
 
+# 加载所有模型，不存在也保留选项
 @st.cache_resource(show_spinner=False)
 def load_models():
     models = {}
     for k, p in MODEL_PATHS.items():
-        path = Path(p)
-        if path.exists():
-            try:
-                models[k] = YOLO(str(path))
-            except:
-                pass
+        try:
+            models[k] = YOLO(p)
+        except:
+            models[k] = None  # 不存在也保留key
     return models
 
 MODELS = load_models()
@@ -483,11 +489,14 @@ def predict_on_image(img_input, model_key: str, conf: float | None = None):
         raise TypeError(f"Unsupported type: {type(img_input)}")
 
     c = float(conf) if conf is not None else DEFAULT_CONF
-    if model_key not in MODELS:
-        default_model = list(MODELS.keys())[0] if MODELS else None
-        model_key = "Ich" if "Ich" in MODELS else default_model
-    if not model_key:
-        raise RuntimeError(t('no_available_model'))
+    
+    # 自动兜底，不报错
+    if MODELS.get(model_key) is None:
+        for fallback in MODEL_ORDER:
+            if MODELS.get(fallback):
+                model_key = fallback
+                break
+
     r = MODELS[model_key].predict(source=pil_img, conf=c, imgsz=640, verbose=False)[0]
     im_bgr = r.plot()
     im_rgb = im_bgr[..., ::-1]
@@ -518,11 +527,11 @@ def process_video(video_bytes: bytes, model_key: str, conf: float | None = None,
         if max_frames and i > max_frames:
             break
         c = float(conf) if conf is not None else DEFAULT_CONF
-        if model_key not in MODELS:
-            default_model = list(MODELS.keys())[0] if MODELS else None
-            model_key = "Ich" if "Ich" in MODELS else default_model
-        if not model_key:
-            raise RuntimeError(t('no_available_model'))
+        if MODELS.get(model_key) is None:
+            for fallback in MODEL_ORDER:
+                if MODELS.get(fallback):
+                    model_key = fallback
+                    break
         r = MODELS[model_key].predict(source=frame, conf=c, imgsz=640, verbose=False)[0]
         vw.write(r.plot())
 
@@ -533,11 +542,12 @@ def process_video(video_bytes: bytes, model_key: str, conf: float | None = None,
 def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = DEFAULT_CONF, max_frames: int = None) -> dict:
     if not CV2_OK:
         return {"success": False, "message": t("video_disabled"), "total_distance": 0, "average_speed": 0, "video_duration": 0, "total_frames": 0, "processed_video_path": ""}
-    if model_key not in MODELS:
-        default_model = list(MODELS.keys())[0] if MODELS else None
-        model_key = default_model
-    if not model_key:
-        return {"success": False, "message": t('no_available_model'), "total_distance": 0, "average_speed": 0, "video_duration": 0, "total_frames": 0, "processed_video_path": ""}
+    
+    if MODELS.get(model_key) is None:
+        for fallback in MODEL_ORDER:
+            if MODELS.get(fallback):
+                model_key = fallback
+                break
 
     prev_center = None
     total_distance = 0.0
@@ -738,20 +748,19 @@ with st.sidebar:
     st.markdown(f"### 🎓 {t('sidebar_university')}")
     st.divider()
     st.header(t('sidebar_model'))
+
+    # 🔥 强制显示全部6个模型，不过滤
     model_options = {k: t(k) for k in MODEL_ORDER}
-    available_models = {k: model_options[k] for k in MODEL_ORDER if k in MODELS}
-    if not available_models:
-        st.error(t('no_available_model'))
-        st.stop()
-    default_model = 'Ich' if 'Ich' in available_models else next(iter(available_models))
-    model_keys = list(available_models.keys())
+    model_keys = MODEL_ORDER
+    default_model = 'Ich'
+
     model_value = st.selectbox(
         t('sidebar_model_type'),
         options=model_keys,
-        format_func=lambda x: available_models[x],
+        format_func=lambda x: model_options[x],
         index=model_keys.index(default_model),
     )
-    st.markdown(f"✅ {t('sidebar_current_model')} **{available_models[model_value]}**")
+    st.markdown(f"✅ {t('sidebar_current_model')} **{model_options[model_value]}**")
 
 # ====================== 标签页 ======================
 tab_img, tab_folder, tab_video, tab_camera, tab_tracking, tab_fuzzy = st.tabs([
