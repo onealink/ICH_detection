@@ -163,7 +163,9 @@ translations = {
         'health_short': '健康状态',
         'fuzzy_behavior_select': '行为',
         'fuzzy_surface_select': '体表',
-        'fuzzy_pathogen_select': '病原'
+        'fuzzy_pathogen_select': '病原',
+        'main_title_zh': '🐟 鱼类白点病检测平台',
+        'main_title_en': '🐟 Fish Ich Disease Detection Platform'
     },
     'en': {
         'tab_tracking': '📍 Trajectory Analysis',
@@ -281,7 +283,9 @@ translations = {
         'health_short': 'Health Status',
         'fuzzy_behavior_select': 'Behavior',
         'fuzzy_surface_select': 'Surface',
-        'fuzzy_pathogen_select': 'Pathogen'
+        'fuzzy_pathogen_select': 'Pathogen',
+        'main_title_zh': '🐟 鱼类白点病检测平台',
+        'main_title_en': '🐟 Fish Ich Disease Detection Platform'
     }
 }
 
@@ -716,7 +720,7 @@ st.markdown("""
     .stButton>button {
         border-radius: 10px;
         height: 38px;
-        font-weight: 500;
+        font-weight: 50;
     }
     .stTabs [data-baseweb="tab"] {
         border-radius: 8px 8px 0 0;
@@ -729,8 +733,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ====================== 顶部大标题 ======================
-title_text = "🐟 鱼类白点病检测平台" if st.session_state.language == 'zh' else "🐟 Fish Ich Disease Detection Platform"
+# ====================== 顶部大标题（已修复多语言） ======================
+title_text = t('main_title_zh') if st.session_state.language == 'zh' else t('main_title_en')
 st.markdown(f'<div class="main-title">{title_text}</div>', unsafe_allow_html=True)
 
 # ====================== 侧边栏 ======================
