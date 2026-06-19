@@ -730,7 +730,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ====================== 顶部大标题 ======================
-st.markdown('<div class="main-title">🐟 鱼类白点病检测平台</div>', unsafe_allow_html=True)
+title_text = "🐟 鱼类白点病检测平台" if st.session_state.language == 'zh' else "🐟 Fish Ich Disease Detection Platform"
+st.markdown(f'<div class="main-title">{title_text}</div>', unsafe_allow_html=True)
 
 # ====================== 侧边栏 ======================
 with st.sidebar:
