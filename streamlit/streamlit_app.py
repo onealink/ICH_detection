@@ -378,10 +378,12 @@ def register_custom_yolo_modules():
         globals()["C2f_PPBlock"] = C2f_PPBlock
 
         import types
-        custom_module = types.ModuleType("yolov11_c2f_ppblock")
+        custom_module = types.ModuleType("ultralytics.nn.modules.c2f_ppblock")
         custom_module.PPBlock = PPBlock
         custom_module.C2f_PPBlock = C2f_PPBlock
         sys.modules["yolov11_c2f_ppblock"] = custom_module
+        sys.modules["ultralytics.nn.modules.c2f_ppblock"] = custom_module
+        setattr(modules, "c2f_ppblock", custom_module)
 
         if not hasattr(block, "C3k2") and hasattr(block, "C2f"):
             class C3k2(block.C2f):
@@ -432,14 +434,23 @@ DEFAULT_CONF = 0.6
 @st.cache_resource(show_spinner=False)
 def load_models():
     models = {}
+    errors = {}
     for k, p in MODEL_PATHS.items():
         try:
             models[k] = YOLO(p)
-        except:
-            models[k] = None  # 不存在也保留key
-    return models
+        except Exception as exc:
+            models[k] = None
+            errors[k] = f"{type(exc).__name__}: {exc}"
+    return models, errors
 
-MODELS = load_models()
+MODELS, MODEL_LOAD_ERRORS = load_models()
+
+def get_loaded_model(model_key: str):
+    model = MODELS.get(model_key)
+    if model is None:
+        detail = MODEL_LOAD_ERRORS.get(model_key, "model is unavailable")
+        raise RuntimeError(f"Model {model_key} failed to load: {detail}")
+    return model
 
 # ====================== 工具函数 ======================
 def detections_to_df(res) -> pd.DataFrame:
@@ -494,14 +505,8 @@ def predict_on_image(img_input, model_key: str, conf: float | None = None):
 
     c = float(conf) if conf is not None else DEFAULT_CONF
     
-    # 自动兜底，不报错
-    if MODELS.get(model_key) is None:
-        for fallback in MODEL_ORDER:
-            if MODELS.get(fallback):
-                model_key = fallback
-                break
-
-    r = MODELS[model_key].predict(source=pil_img, conf=c, imgsz=640, verbose=False)[0]
+    model = get_loaded_model(model_key)
+    r = model.predict(source=pil_img, conf=c, imgsz=640, verbose=False)[0]
     im_bgr = r.plot()
     im_rgb = im_bgr[..., ::-1]
     vis_pil = Image.fromarray(im_rgb)
@@ -521,6 +526,7 @@ def process_video(video_bytes: bytes, model_key: str, conf: float | None = None,
     w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     out_path = Path(f"processed_{int(time.time())}.mp4")
     vw = cv2.VideoWriter(str(out_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+    model = get_loaded_model(model_key)
 
     i = 0
     while True:
@@ -531,12 +537,7 @@ def process_video(video_bytes: bytes, model_key: str, conf: float | None = None,
         if max_frames and i > max_frames:
             break
         c = float(conf) if conf is not None else DEFAULT_CONF
-        if MODELS.get(model_key) is None:
-            for fallback in MODEL_ORDER:
-                if MODELS.get(fallback):
-                    model_key = fallback
-                    break
-        r = MODELS[model_key].predict(source=frame, conf=c, imgsz=640, verbose=False)[0]
+        r = model.predict(source=frame, conf=c, imgsz=640, verbose=False)[0]
         vw.write(r.plot())
 
     cap.release()
@@ -547,17 +548,11 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
     if not CV2_OK:
         return {"success": False, "message": t("video_disabled"), "total_distance": 0, "average_speed": 0, "video_duration": 0, "total_frames": 0, "processed_video_path": ""}
     
-    if MODELS.get(model_key) is None:
-        for fallback in MODEL_ORDER:
-            if MODELS.get(fallback):
-                model_key = fallback
-                break
-
     prev_center = None
     total_distance = 0.0
     total_frames = 0
     trajectory_points = []
-    current_model = MODELS[model_key]
+    current_model = get_loaded_model(model_key)
     model_class_names = current_model.names
     fish_keywords = ["healthy", "subhealthy", "diseased", "健康", "亚健康", "患病", "鱼", "fish"]
     fish_categories = set()
@@ -596,7 +591,7 @@ def calculate_fish_trajectory(video_bytes: bytes, model_key: str, conf: float = 
         status_text.text(f"{t('tracking_processing')} {total_frames}/{total_frames_total}")
 
         try:
-            r = MODELS[model_key].predict(source=frame, conf=conf, imgsz=640, verbose=False)[0]
+            r = current_model.predict(source=frame, conf=conf, imgsz=640, verbose=False)[0]
         except Exception as e:
             cap.release()
             out.release()
@@ -754,10 +749,15 @@ with st.sidebar:
     st.divider()
     st.header(t('sidebar_model'))
 
-    # 🔥 强制显示全部6个模型，不过滤
+    # 仅允许选择已成功加载的模型，避免错误模型静默兜底。
     model_options = {k: t(k) for k in MODEL_ORDER}
-    model_keys = MODEL_ORDER
-    default_model = 'Ich'
+    model_keys = [k for k in MODEL_ORDER if MODELS.get(k) is not None]
+    if not model_keys:
+        st.error(t('no_available_model'))
+        for key, error in MODEL_LOAD_ERRORS.items():
+            st.caption(f"❌ {key}: {error}")
+        st.stop()
+    default_model = 'Ich' if 'Ich' in model_keys else model_keys[0]
 
     model_value = st.selectbox(
         t('sidebar_model_type'),
@@ -766,6 +766,12 @@ with st.sidebar:
         index=model_keys.index(default_model),
     )
     st.markdown(f"✅ {t('sidebar_current_model')} **{model_options[model_value]}**")
+    with st.expander("Model load status / 模型加载状态"):
+        for key in MODEL_ORDER:
+            if MODELS.get(key) is not None:
+                st.caption(f"✅ {key}")
+            else:
+                st.caption(f"❌ {key}: {MODEL_LOAD_ERRORS.get(key, 'unavailable')}")
 
 # ====================== 标签页 ======================
 tab_img, tab_folder, tab_video, tab_camera, tab_tracking, tab_fuzzy = st.tabs([
